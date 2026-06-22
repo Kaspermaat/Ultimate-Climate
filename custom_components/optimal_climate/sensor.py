@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_ZONE_NAME, DOMAIN
-from .coordinator import ClimateSnapshot, OptimalClimateCoordinator
+from .coordinator import ClimateSnapshot, CoverResult, OptimalClimateCoordinator
 
 
 async def async_setup_entry(
@@ -28,7 +28,7 @@ async def async_setup_entry(
             VentilationAdviceSensor(coordinator, entry, zone),
             CO2TrendSensor(coordinator, entry, zone),
             FanSpeedSensor(coordinator, entry, zone),
-            CoverPositionSensor(coordinator, entry, zone),
+            CoversSummarySensor(coordinator, entry, zone),
         ]
     )
 
@@ -193,30 +193,34 @@ class CO2TrendSensor(_BaseClimateSensor):
         return {"geschiedenis": self.coordinator.data.co2_history}
 
 
-class CoverPositionSensor(_BaseClimateSensor):
-    _attr_name = "Zonwering advies"
+class CoversSummarySensor(_BaseClimateSensor):
+    """Toont het aantal actieve covers en hun gemiddelde positie."""
+
+    _attr_name = "Covers overzicht"
     _attr_native_unit_of_measurement = "%"
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:window-shutter"
 
     def __init__(self, coordinator, entry, zone):
-        super().__init__(coordinator, entry, zone, "cover_position")
+        super().__init__(coordinator, entry, zone, "covers_summary")
 
     @property
     def native_value(self) -> int | None:
-        if self.coordinator.data is None:
+        if self.coordinator.data is None or not self.coordinator.data.covers:
             return None
-        return self.coordinator.data.cover.position
+        positions = [c.position for c in self.coordinator.data.covers]
+        return int(sum(positions) / len(positions))
 
     @property
     def extra_state_attributes(self) -> dict:
         if self.coordinator.data is None:
             return {}
-        c = self.coordinator.data.cover
         s = self.coordinator.data.sensors
         return {
-            "label": c.label,
-            "reden": c.reason,
+            "covers": [
+                {"entity": c.entity_id, "positie": c.position, "reden": c.reason}
+                for c in self.coordinator.data.covers
+            ],
             "zon_azimuth": s.sun_azimuth,
             "zon_elevatie": s.sun_elevation,
         }

@@ -1,4 +1,4 @@
-"""Config flow: four-step wizard (zone → sensors → covers → gordijnen)."""
+"""Config flow: zone → sensoren → covers (één voor één toevoegen) → afronden."""
 from __future__ import annotations
 
 import voluptuous as vol
@@ -6,28 +6,49 @@ from homeassistant import config_entries
 from homeassistant.helpers import selector
 
 from .const import (
+    CC_AZIMUTH,
+    CC_CURTAIN_MIN_OPEN,
+    CC_ENTITY_ID,
+    CC_FOV,
+    CC_ILLUMINANCE_SENSOR,
+    CC_ILLUMINANCE_THRESHOLD,
+    CC_LINKED_CURTAIN,
+    CC_MIN_POSITION,
+    CC_NAME,
+    CC_SUN_PROTECTION,
+    CC_TEMP_SENSOR,
+    CC_TYPE,
     CONF_CLIMATE_ENTITY,
     CONF_CO2_SENSOR,
-    CONF_COVER_ENTITIES,
-    CONF_CURTAIN_MIN_OPEN,
+    CONF_COVER_CONFIGS,
     CONF_FAN_ENTITY,
     CONF_HUMIDITY_INDOOR,
     CONF_HUMIDITY_OUTDOOR,
     CONF_TEMP_OUTDOOR,
-    CONF_WINDOW_AZIMUTH,
-    CONF_WINDOW_CURTAIN_MAP,
-    CONF_WINDOW_ENTITIES,
-    CONF_WINDOW_FOV,
+    CONF_TEMP_SENSORS,
     CONF_WINDOW_TEMP_MAX,
     CONF_WINDOW_TEMP_MIN,
     CONF_ZONE_NAME,
-    DEFAULT_CURTAIN_MIN_OPEN,
-    DEFAULT_WINDOW_AZIMUTH,
-    DEFAULT_WINDOW_FOV,
+    COVER_TYPE_CURTAIN,
+    COVER_TYPE_SHUTTER,
+    COVER_TYPE_WINDOW,
+    DEFAULT_FOV,
+    DEFAULT_ILLUMINANCE_THRESHOLD,
+    DEFAULT_MIN_POSITION_CURTAIN,
+    DEFAULT_MIN_POSITION_SHUTTER,
+    DEFAULT_MIN_POSITION_WINDOW,
     DEFAULT_WINDOW_TEMP_MAX,
     DEFAULT_WINDOW_TEMP_MIN,
     DOMAIN,
 )
+
+
+def _min_pos_default(cover_type: str) -> int:
+    if cover_type == COVER_TYPE_CURTAIN:
+        return DEFAULT_MIN_POSITION_CURTAIN
+    if cover_type == COVER_TYPE_WINDOW:
+        return DEFAULT_MIN_POSITION_WINDOW
+    return DEFAULT_MIN_POSITION_SHUTTER
 
 
 class OptimalClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -51,49 +72,44 @@ class OptimalClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._data.update(user_input)
             return await self.async_step_sensors()
 
-        schema = vol.Schema(
-            {
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema({
                 vol.Required(CONF_ZONE_NAME, default="Woonkamer"): str,
                 vol.Optional(CONF_CLIMATE_ENTITY): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="climate")
                 ),
-            }
-        )
-        return self.async_show_form(
-            step_id="user",
-            data_schema=schema,
-            description_placeholders={"step": "1 / 4"},
+            }),
+            description_placeholders={"step": "1 / 3"},
         )
 
     # ------------------------------------------------------------------
-    # Stap 2: sensoren + afzuiging + temperatuurbereik ramen
+    # Stap 2: sensoren
     # ------------------------------------------------------------------
 
     async def async_step_sensors(self, user_input=None):
         if user_input is not None:
             self._data.update({k: v for k, v in user_input.items() if v is not None})
-            return await self.async_step_covers()
+            return await self.async_step_covers_menu()
 
-        schema = vol.Schema(
-            {
+        return self.async_show_form(
+            step_id="sensors",
+            data_schema=vol.Schema({
                 vol.Optional(CONF_CO2_SENSOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(
-                        domain="sensor", device_class="carbon_dioxide"
-                    )
+                    selector.EntitySelectorConfig(domain="sensor", device_class="carbon_dioxide")
                 ),
                 vol.Optional(CONF_HUMIDITY_INDOOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(
-                        domain="sensor", device_class="humidity"
-                    )
+                    selector.EntitySelectorConfig(domain="sensor", device_class="humidity")
                 ),
                 vol.Optional(CONF_HUMIDITY_OUTDOOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(
-                        domain="sensor", device_class="humidity"
-                    )
+                    selector.EntitySelectorConfig(domain="sensor", device_class="humidity")
                 ),
                 vol.Optional(CONF_TEMP_OUTDOOR): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor", device_class="temperature")
+                ),
+                vol.Optional(CONF_TEMP_SENSORS): selector.EntitySelector(
                     selector.EntitySelectorConfig(
-                        domain="sensor", device_class="temperature"
+                        domain="sensor", device_class="temperature", multiple=True
                     )
                 ),
                 vol.Optional(CONF_FAN_ENTITY): selector.EntitySelector(
@@ -113,141 +129,67 @@ class OptimalClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         min=15, max=40, step=1, unit_of_measurement="°C", mode="slider"
                     )
                 ),
-            }
-        )
-        return self.async_show_form(
-            step_id="sensors",
-            data_schema=schema,
-            description_placeholders={"step": "2 / 4"},
+            }),
+            description_placeholders={"step": "2 / 3"},
         )
 
     # ------------------------------------------------------------------
-    # Stap 3: covers en ramen
+    # Stap 3: covers menu (voeg één voor één toe)
     # ------------------------------------------------------------------
 
-    async def async_step_covers(self, user_input=None):
+    async def async_step_covers_menu(self, user_input=None):
+        count = len(self._data.get(CONF_COVER_CONFIGS) or [])
+        return self.async_show_menu(
+            step_id="covers_menu",
+            menu_options=["add_cover", "covers_done"],
+            description_placeholders={"count": str(count)},
+        )
+
+    async def async_step_add_cover(self, user_input=None):
         if user_input is not None:
-            self._data.update({k: v for k, v in user_input.items() if v is not None})
-            return await self.async_step_curtains()
-
-        schema = vol.Schema(
-            {
-                vol.Optional(CONF_COVER_ENTITIES): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="cover", multiple=True)
-                ),
-                vol.Optional(CONF_WINDOW_ENTITIES): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="cover", multiple=True)
-                ),
-                vol.Optional(
-                    CONF_WINDOW_AZIMUTH, default=DEFAULT_WINDOW_AZIMUTH
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=0, max=359, step=1, unit_of_measurement="°", mode="box"
-                    )
-                ),
-                vol.Optional(
-                    CONF_WINDOW_FOV, default=DEFAULT_WINDOW_FOV
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=10, max=180, step=5, unit_of_measurement="°", mode="slider"
-                    )
-                ),
-            }
-        )
-        return self.async_show_form(
-            step_id="covers",
-            data_schema=schema,
-            description_placeholders={"step": "3 / 4"},
-        )
-
-    # ------------------------------------------------------------------
-    # Stap 4: gordijn-raam koppelingen (dynamisch per raam)
-    # ------------------------------------------------------------------
-
-    async def async_step_curtains(self, user_input=None):
-        windows: list[str] = list(self._data.get(CONF_WINDOW_ENTITIES) or [])
-
-        if not windows:
-            # Geen ramen geconfigureerd — stap overslaan
-            return self.async_create_entry(
-                title=self._data[CONF_ZONE_NAME], data=self._data
-            )
-
-        if user_input is not None:
-            curtain_map: dict[str, str] = {}
-            for window_id in windows:
-                key = _curtain_key(window_id)
-                curtain = user_input.get(key)
-                if curtain:
-                    curtain_map[window_id] = curtain
-
-            min_open = user_input.get(CONF_CURTAIN_MIN_OPEN, DEFAULT_CURTAIN_MIN_OPEN)
-
-            self._data[CONF_WINDOW_CURTAIN_MAP] = curtain_map
-            self._data[CONF_CURTAIN_MIN_OPEN] = min_open
-
-            return self.async_create_entry(
-                title=self._data[CONF_ZONE_NAME], data=self._data
-            )
-
-        # Bouw een dynamisch formulier: één gordijn-selector per raam
-        schema_fields: dict = {}
-        for window_id in windows:
-            schema_fields[vol.Optional(_curtain_key(window_id))] = (
-                selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="cover")
-                )
-            )
-
-        schema_fields[
-            vol.Optional(CONF_CURTAIN_MIN_OPEN, default=DEFAULT_CURTAIN_MIN_OPEN)
-        ] = selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0, max=50, step=5, unit_of_measurement="%", mode="slider"
-            )
-        )
+            configs = self._data.setdefault(CONF_COVER_CONFIGS, [])
+            # Strip empty optional fields
+            cfg = {k: v for k, v in user_input.items() if v not in (None, "", [])}
+            configs.append(cfg)
+            return await self.async_step_covers_menu()
 
         return self.async_show_form(
-            step_id="curtains",
-            data_schema=vol.Schema(schema_fields),
-            description_placeholders={
-                "step": "4 / 4",
-                "window_count": str(len(windows)),
-            },
+            step_id="add_cover",
+            data_schema=_cover_schema(),
         )
 
-
-def _curtain_key(window_entity_id: str) -> str:
-    """Stable form field key for a window entity."""
-    return f"curtain__{window_entity_id.replace('.', '__')}"
+    async def async_step_covers_done(self, user_input=None):
+        return self.async_create_entry(
+            title=self._data[CONF_ZONE_NAME], data=self._data
+        )
 
 
 # ---------------------------------------------------------------------------
-# Options flow — aanpasbaar na initiële setup
+# Options flow
 # ---------------------------------------------------------------------------
 
 class OptimalClimateOptionsFlow(config_entries.OptionsFlow):
-    """Laat gebruikers drempelwaarden aanpassen zonder opnieuw te installeren."""
-
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self._entry = config_entry
-        # Merge bestaande data + opties als startpunt
         self._options: dict = {**config_entry.data, **config_entry.options}
 
     async def async_step_init(self, user_input=None):
-        return await self.async_step_thresholds()
+        return await self.async_step_options_menu()
 
-    # ------------------------------------------------------------------
-    # Stap 1: drempelwaarden (meest aangepast na setup)
-    # ------------------------------------------------------------------
+    async def async_step_options_menu(self, user_input=None):
+        return self.async_show_menu(
+            step_id="options_menu",
+            menu_options=["edit_thresholds", "edit_sensors", "add_cover", "options_done"],
+        )
 
-    async def async_step_thresholds(self, user_input=None):
+    async def async_step_edit_thresholds(self, user_input=None):
         if user_input is not None:
             self._options.update(user_input)
-            return await self.async_step_options_sensors()
+            return await self.async_step_options_menu()
 
-        schema = vol.Schema(
-            {
+        return self.async_show_form(
+            step_id="edit_thresholds",
+            data_schema=vol.Schema({
                 vol.Optional(
                     CONF_WINDOW_TEMP_MIN,
                     default=self._options.get(CONF_WINDOW_TEMP_MIN, DEFAULT_WINDOW_TEMP_MIN),
@@ -264,75 +206,29 @@ class OptimalClimateOptionsFlow(config_entries.OptionsFlow):
                         min=15, max=40, step=1, unit_of_measurement="°C", mode="slider"
                     )
                 ),
-                vol.Optional(
-                    CONF_CURTAIN_MIN_OPEN,
-                    default=self._options.get(CONF_CURTAIN_MIN_OPEN, DEFAULT_CURTAIN_MIN_OPEN),
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=0, max=50, step=5, unit_of_measurement="%", mode="slider"
-                    )
-                ),
-                vol.Optional(
-                    CONF_WINDOW_AZIMUTH,
-                    default=self._options.get(CONF_WINDOW_AZIMUTH, DEFAULT_WINDOW_AZIMUTH),
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=0, max=359, step=1, unit_of_measurement="°", mode="box"
-                    )
-                ),
-                vol.Optional(
-                    CONF_WINDOW_FOV,
-                    default=self._options.get(CONF_WINDOW_FOV, DEFAULT_WINDOW_FOV),
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=10, max=180, step=5, unit_of_measurement="°", mode="slider"
-                    )
-                ),
-            }
+            }),
         )
-        return self.async_show_form(step_id="thresholds", data_schema=schema)
 
-    # ------------------------------------------------------------------
-    # Stap 2: sensoren / afzuiging wisselen
-    # ------------------------------------------------------------------
-
-    async def async_step_options_sensors(self, user_input=None):
+    async def async_step_edit_sensors(self, user_input=None):
         if user_input is not None:
             self._options.update({k: v for k, v in user_input.items() if v is not None})
-            return self.async_create_entry(data=self._options)
+            return await self.async_step_options_menu()
 
-        schema = vol.Schema(
-            {
+        return self.async_show_form(
+            step_id="edit_sensors",
+            data_schema=vol.Schema({
                 vol.Optional(
                     CONF_CO2_SENSOR,
                     default=self._options.get(CONF_CO2_SENSOR),
                 ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(
-                        domain="sensor", device_class="carbon_dioxide"
-                    )
+                    selector.EntitySelectorConfig(domain="sensor", device_class="carbon_dioxide")
                 ),
                 vol.Optional(
-                    CONF_HUMIDITY_INDOOR,
-                    default=self._options.get(CONF_HUMIDITY_INDOOR),
+                    CONF_TEMP_SENSORS,
+                    default=self._options.get(CONF_TEMP_SENSORS, []),
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(
-                        domain="sensor", device_class="humidity"
-                    )
-                ),
-                vol.Optional(
-                    CONF_HUMIDITY_OUTDOOR,
-                    default=self._options.get(CONF_HUMIDITY_OUTDOOR),
-                ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(
-                        domain="sensor", device_class="humidity"
-                    )
-                ),
-                vol.Optional(
-                    CONF_TEMP_OUTDOOR,
-                    default=self._options.get(CONF_TEMP_OUTDOOR),
-                ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(
-                        domain="sensor", device_class="temperature"
+                        domain="sensor", device_class="temperature", multiple=True
                     )
                 ),
                 vol.Optional(
@@ -341,6 +237,83 @@ class OptimalClimateOptionsFlow(config_entries.OptionsFlow):
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain=["fan", "number"])
                 ),
-            }
+            }),
         )
-        return self.async_show_form(step_id="options_sensors", data_schema=schema)
+
+    async def async_step_add_cover(self, user_input=None):
+        if user_input is not None:
+            configs = self._options.setdefault(CONF_COVER_CONFIGS, [])
+            cfg = {k: v for k, v in user_input.items() if v not in (None, "", [])}
+            configs.append(cfg)
+            return await self.async_step_options_menu()
+
+        return self.async_show_form(
+            step_id="add_cover",
+            data_schema=_cover_schema(),
+        )
+
+    async def async_step_options_done(self, user_input=None):
+        return self.async_create_entry(data=self._options)
+
+
+# ---------------------------------------------------------------------------
+# Shared cover form schema
+# ---------------------------------------------------------------------------
+
+def _cover_schema(defaults: dict | None = None) -> vol.Schema:
+    d = defaults or {}
+    return vol.Schema({
+        vol.Required(CC_ENTITY_ID, default=d.get(CC_ENTITY_ID, "")): selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="cover")
+        ),
+        vol.Optional(CC_NAME, default=d.get(CC_NAME, "")): str,
+        vol.Required(CC_TYPE, default=d.get(CC_TYPE, COVER_TYPE_SHUTTER)): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[
+                    {"value": COVER_TYPE_SHUTTER, "label": "Shutter / rolluik"},
+                    {"value": COVER_TYPE_CURTAIN, "label": "Gordijn"},
+                    {"value": COVER_TYPE_WINDOW, "label": "Automatisch raam"},
+                ],
+                mode=selector.SelectSelectorMode.LIST,
+            )
+        ),
+        vol.Required(CC_AZIMUTH, default=d.get(CC_AZIMUTH, 180)): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=0, max=359, step=1, unit_of_measurement="°", mode="box"
+            )
+        ),
+        vol.Optional(CC_FOV, default=d.get(CC_FOV, DEFAULT_FOV)): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=10, max=180, step=5, unit_of_measurement="°", mode="slider"
+            )
+        ),
+        vol.Optional(CC_MIN_POSITION, default=d.get(CC_MIN_POSITION, DEFAULT_MIN_POSITION_SHUTTER)): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=0, max=90, step=5, unit_of_measurement="%", mode="slider"
+            )
+        ),
+        vol.Optional(CC_SUN_PROTECTION, default=d.get(CC_SUN_PROTECTION, True)): selector.BooleanSelector(),
+        vol.Optional(CC_ILLUMINANCE_SENSOR, default=d.get(CC_ILLUMINANCE_SENSOR)): selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="sensor", device_class="illuminance")
+        ),
+        vol.Optional(
+            CC_ILLUMINANCE_THRESHOLD, default=d.get(CC_ILLUMINANCE_THRESHOLD, DEFAULT_ILLUMINANCE_THRESHOLD)
+        ): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=500, max=100000, step=500, unit_of_measurement="lx", mode="box"
+            )
+        ),
+        vol.Optional(CC_TEMP_SENSOR, default=d.get(CC_TEMP_SENSOR)): selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="sensor", device_class="temperature")
+        ),
+        vol.Optional(CC_LINKED_CURTAIN, default=d.get(CC_LINKED_CURTAIN)): selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="cover")
+        ),
+        vol.Optional(
+            CC_CURTAIN_MIN_OPEN, default=d.get(CC_CURTAIN_MIN_OPEN, DEFAULT_MIN_POSITION_CURTAIN)
+        ): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=0, max=50, step=5, unit_of_measurement="%", mode="slider"
+            )
+        ),
+    })

@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Zone instellen",
-        "description": "Stap {step} — geef de zone een naam en koppel optioneel een klimaatentiteit (4 stappen totaal).",
+        "description": "Stap {step} — geef de zone een naam.",
         "data": {
           "zone_name": "Zonenaam",
           "climate_entity": "Klimaatentiteit (thermostaat / airco)"
@@ -11,38 +11,89 @@
       },
       "sensors": {
         "title": "Sensoren koppelen",
-        "description": "Stap {step} — koppel de beschikbare sensoren. Alle velden zijn optioneel.",
+        "description": "Stap {step} — koppel sensoren. Alle velden zijn optioneel.",
         "data": {
           "co2_sensor": "CO₂ sensor (ppm)",
           "humidity_indoor": "Luchtvochtigheid binnen (%)",
           "humidity_outdoor": "Luchtvochtigheid buiten (%)",
           "temp_outdoor": "Temperatuur buiten (°C)",
+          "temp_sensors": "Extra binnentemperatuur-sensoren (meerdere mogelijk)",
           "fan_entity": "Afzuiging / ventilatie (fan of number entiteit)",
-          "window_temp_min": "Minimale buitentemperatuur om ramen te openen (°C)",
-          "window_temp_max": "Maximale buitentemperatuur om ramen te openen (°C)"
+          "window_temp_min": "Min. buitentemp. voor ramen openen (°C)",
+          "window_temp_max": "Max. buitentemp. voor ramen openen (°C)"
         }
       },
-      "covers": {
-        "title": "Covers en ramen",
-        "description": "Stap {step} — koppel schermen / shutters en automatische ramen. Beide optioneel.",
+      "covers_menu": {
+        "title": "Covers beheren",
+        "description": "{count} cover(s) toegevoegd. Wat wil je doen?"
+      },
+      "add_cover": {
+        "title": "Cover toevoegen",
+        "description": "Configureer één shutter, gordijn of automatisch raam.",
         "data": {
-          "cover_entities": "Shutters / zonwering",
-          "window_entities": "Automatische ramen",
-          "window_azimuth": "Raamoriëntatie (kompasgraden, 180 = zuiden)",
-          "window_fov": "Gezichtshoek van het raam (°)"
+          "entity_id": "Cover entiteit",
+          "name": "Naam (optioneel)",
+          "cover_type": "Type",
+          "azimuth": "Oriëntatie (kompasgraden, 180 = zuiden)",
+          "fov": "Gezichtshoek (°)",
+          "min_position": "Minimale openingsstand bij zonwering (%)",
+          "sun_protection": "Zonwering inschakelen",
+          "illuminance_sensor": "Lichtsensor (lux)",
+          "illuminance_threshold": "Lux-drempel voor zonwering",
+          "temp_sensor": "Temperatuursensor voor deze cover",
+          "linked_curtain": "Gekoppeld gordijn (alleen bij raam-type)",
+          "curtain_min_open": "Min. gordijnopening bij open raam (%)"
         }
       },
-      "curtains": {
-        "title": "Gordijnen koppelen",
-        "description": "Stap {step} — koppel voor elk raam optioneel een gordijn. Bij {window_count} raam/ramen geconfigureerd.\n\nAls een gordijn te ver dicht is, gaat het raam niet open. Als het raam open gaat, wordt het gordijn op zijn minst op de minimumstand gezet.",
-        "data": {
-          "curtain_min_open": "Minimale gordijnopening bij open raam (%)"
-        }
+      "covers_done": {
+        "title": "Klaar"
       }
     },
     "error": {},
     "abort": {
       "already_configured": "Zone is al geconfigureerd."
+    }
+  },
+  "options": {
+    "step": {
+      "options_menu": {
+        "title": "Wat wil je aanpassen?"
+      },
+      "edit_thresholds": {
+        "title": "Drempelwaarden",
+        "data": {
+          "window_temp_min": "Min. buitentemp. voor ramen openen (°C)",
+          "window_temp_max": "Max. buitentemp. voor ramen openen (°C)"
+        }
+      },
+      "edit_sensors": {
+        "title": "Sensoren aanpassen",
+        "data": {
+          "co2_sensor": "CO₂ sensor",
+          "temp_sensors": "Binnentemperatuur-sensoren",
+          "fan_entity": "Afzuiging"
+        }
+      },
+      "add_cover": {
+        "title": "Cover toevoegen",
+        "data": {
+          "entity_id": "Cover entiteit",
+          "name": "Naam (optioneel)",
+          "cover_type": "Type",
+          "azimuth": "Oriëntatie (°)",
+          "fov": "Gezichtshoek (°)",
+          "min_position": "Minimale openingsstand (%)",
+          "sun_protection": "Zonwering inschakelen",
+          "illuminance_sensor": "Lichtsensor",
+          "illuminance_threshold": "Lux-drempel",
+          "temp_sensor": "Temperatuursensor",
+          "linked_curtain": "Gekoppeld gordijn",
+          "curtain_min_open": "Min. gordijnopening (%)"
+        }
+      },
+      "options_done": {
+        "title": "Opslaan"
+      }
     }
   }
 }
