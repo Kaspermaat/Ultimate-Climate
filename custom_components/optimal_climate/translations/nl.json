@@ -1,0 +1,48 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Zone instellen",
+        "description": "Stap {step} — geef de zone een naam en koppel optioneel een klimaatentiteit (4 stappen totaal).",
+        "data": {
+          "zone_name": "Zonenaam",
+          "climate_entity": "Klimaatentiteit (thermostaat / airco)"
+        }
+      },
+      "sensors": {
+        "title": "Sensoren koppelen",
+        "description": "Stap {step} — koppel de beschikbare sensoren. Alle velden zijn optioneel.",
+        "data": {
+          "co2_sensor": "CO₂ sensor (ppm)",
+          "humidity_indoor": "Luchtvochtigheid binnen (%)",
+          "humidity_outdoor": "Luchtvochtigheid buiten (%)",
+          "temp_outdoor": "Temperatuur buiten (°C)",
+          "fan_entity": "Afzuiging / ventilatie (fan of number entiteit)",
+          "window_temp_min": "Minimale buitentemperatuur om ramen te openen (°C)",
+          "window_temp_max": "Maximale buitentemperatuur om ramen te openen (°C)"
+        }
+      },
+      "covers": {
+        "title": "Covers en ramen",
+        "description": "Stap {step} — koppel schermen / shutters en automatische ramen. Beide optioneel.",
+        "data": {
+          "cover_entities": "Shutters / zonwering",
+          "window_entities": "Automatische ramen",
+          "window_azimuth": "Raamoriëntatie (kompasgraden, 180 = zuiden)",
+          "window_fov": "Gezichtshoek van het raam (°)"
+        }
+      },
+      "curtains": {
+        "title": "Gordijnen koppelen",
+        "description": "Stap {step} — koppel voor elk raam optioneel een gordijn. Bij {window_count} raam/ramen geconfigureerd.\n\nAls een gordijn te ver dicht is, gaat het raam niet open. Als het raam open gaat, wordt het gordijn op zijn minst op de minimumstand gezet.",
+        "data": {
+          "curtain_min_open": "Minimale gordijnopening bij open raam (%)"
+        }
+      }
+    },
+    "error": {},
+    "abort": {
+      "already_configured": "Zone is al geconfigureerd."
+    }
+  }
+}

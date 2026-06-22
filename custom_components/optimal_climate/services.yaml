@@ -1,0 +1,15 @@
+recalculate:
+  name: Herbereken
+  description: >
+    Forceer een directe herberekening voor één zone (via config_entry_id)
+    of voor alle geconfigureerde zones als config_entry_id leeg is.
+  fields:
+    config_entry_id:
+      name: Zone (config entry ID)
+      description: >
+        ID van de config entry voor de specifieke zone. Leeg laten om alle
+        zones tegelijk te herberekenen.
+      required: false
+      example: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+      selector:
+        text:

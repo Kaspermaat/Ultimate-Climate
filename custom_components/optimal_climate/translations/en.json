@@ -1,0 +1,48 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure zone",
+        "description": "Step {step} — give the zone a name and optionally link a climate entity (4 steps total).",
+        "data": {
+          "zone_name": "Zone name",
+          "climate_entity": "Climate entity (thermostat / AC)"
+        }
+      },
+      "sensors": {
+        "title": "Link sensors",
+        "description": "Step {step} — link available sensors. All fields are optional.",
+        "data": {
+          "co2_sensor": "CO₂ sensor (ppm)",
+          "humidity_indoor": "Indoor humidity (%)",
+          "humidity_outdoor": "Outdoor humidity (%)",
+          "temp_outdoor": "Outdoor temperature (°C)",
+          "fan_entity": "Exhaust fan / ventilation (fan or number entity)",
+          "window_temp_min": "Minimum outdoor temperature to open windows (°C)",
+          "window_temp_max": "Maximum outdoor temperature to open windows (°C)"
+        }
+      },
+      "covers": {
+        "title": "Covers and windows",
+        "description": "Step {step} — link blinds / shutters and automated windows. Both optional.",
+        "data": {
+          "cover_entities": "Shutters / blinds",
+          "window_entities": "Automated windows",
+          "window_azimuth": "Window orientation (compass degrees, 180 = south)",
+          "window_fov": "Window field of view (°)"
+        }
+      },
+      "curtains": {
+        "title": "Link curtains",
+        "description": "Step {step} — optionally link a curtain to each window ({window_count} window(s) configured).\n\nIf a curtain is nearly closed the window will not open. When a window opens, the curtain is raised to the minimum opening percentage.",
+        "data": {
+          "curtain_min_open": "Minimum curtain opening when window is open (%)"
+        }
+      }
+    },
+    "error": {},
+    "abort": {
+      "already_configured": "Zone is already configured."
+    }
+  }
+}

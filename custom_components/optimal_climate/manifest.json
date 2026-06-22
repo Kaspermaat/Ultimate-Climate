@@ -1,0 +1,11 @@
+{
+  "domain": "optimal_climate",
+  "name": "Optimal Climate",
+  "version": "0.1.0",
+  "documentation": "https://github.com/kasper/optimal-climate",
+  "dependencies": [],
+  "codeowners": [],
+  "requirements": [],
+  "iot_class": "local_polling",
+  "config_flow": true
+}
