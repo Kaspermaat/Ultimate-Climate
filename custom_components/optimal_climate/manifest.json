@@ -2,9 +2,10 @@
   "domain": "optimal_climate",
   "name": "Optimal Climate",
   "version": "0.1.0",
-  "documentation": "https://github.com/kasper/optimal-climate",
+  "documentation": "https://github.com/Kaspermaat/Ultimate-Climate",
+  "issue_tracker": "https://github.com/Kaspermaat/Ultimate-Climate/issues",
   "dependencies": [],
-  "codeowners": [],
+  "codeowners": ["@Kaspermaat"],
   "requirements": [],
   "iot_class": "local_polling",
   "config_flow": true
