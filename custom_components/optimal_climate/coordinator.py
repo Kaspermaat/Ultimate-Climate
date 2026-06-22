@@ -54,6 +54,16 @@ _LOGGER = logging.getLogger(__name__)
 
 _FAN_HYSTERESIS = 5
 
+
+def _safe_float(value: object) -> float | None:
+    """Convert any value from an entity attribute to float, or None on failure."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
 # Cover position for away/sleep mode (% open — nearly closed for privacy/safety)
 _COVER_AWAY_POSITION = 10
 _COVER_SLEEP_POSITION = 0
@@ -106,7 +116,19 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
         self._co2_history: list[float] = []
         self._last_fan_speed: int = -1
         self._last_cover_positions: dict[str, int] = {}
-        self.mode: str = MODE_AUTO
+        self._mode: str = MODE_AUTO
+
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    @mode.setter
+    def mode(self, value: str) -> None:
+        valid = {MODE_AUTO, MODE_AWAY, MODE_SLEEP, "handmatig"}
+        if value not in valid:
+            _LOGGER.warning("Ongeldige modus '%s' genegeerd", value)
+            return
+        self._mode = value
 
     @property
     def _config(self) -> dict:
@@ -138,16 +160,16 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
 
         if climate_state and climate_state.state not in ("unavailable", "unknown"):
             attrs = climate_state.attributes
-            temp_indoor = attrs.get("current_temperature")
-            temp_setpoint = attrs.get("temperature")
+            temp_indoor = _safe_float(attrs.get("current_temperature"))
+            temp_setpoint = _safe_float(attrs.get("temperature"))
             hvac_action = attrs.get("hvac_action")
 
         sun_state = self.hass.states.get("sun.sun")
         sun_azimuth: float | None = None
         sun_elevation: float | None = None
         if sun_state and sun_state.state != "unavailable":
-            sun_azimuth = sun_state.attributes.get("azimuth")
-            sun_elevation = sun_state.attributes.get("elevation")
+            sun_azimuth = _safe_float(sun_state.attributes.get("azimuth"))
+            sun_elevation = _safe_float(sun_state.attributes.get("elevation"))
 
         return SensorStates(
             co2=self._float_state(self._config.get(CONF_CO2_SENSOR)),
@@ -221,6 +243,9 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
         min_val = float(attrs.get("min", 0))
         max_val = float(attrs.get("max", 100))
         step = float(attrs.get("step", 1))
+        # Guard: step == 0 causes ZeroDivisionError; treat as step 1
+        if step <= 0:
+            step = 1.0
         raw = min_val + (speed_pct / 100) * (max_val - min_val)
         value = max(min_val, min(max_val, round(round(raw / step) * step, 10)))
         await self.hass.services.async_call(
