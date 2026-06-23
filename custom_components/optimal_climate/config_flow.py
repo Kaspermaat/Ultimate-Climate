@@ -83,7 +83,10 @@ class OptimalClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         count = len(self._data.get(CONF_CLIMATE_CONFIGS) or [])
         return self.async_show_menu(
             step_id="climate_menu",
-            menu_options=["add_climate", "climate_done"],
+            menu_options={
+                "add_climate": "Klimaatapparaat toevoegen",
+                "climate_done": "Verder naar sensoren →",
+            },
             description_placeholders={"count": str(count)},
         )
 
@@ -158,7 +161,10 @@ class OptimalClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         count = len(self._data.get(CONF_COVER_CONFIGS) or [])
         return self.async_show_menu(
             step_id="covers_menu",
-            menu_options=["add_cover", "covers_done"],
+            menu_options={
+                "add_cover": "Cover toevoegen (shutter / gordijn / raam)",
+                "covers_done": "Opslaan en afronden →",
+            },
             description_placeholders={"count": str(count)},
         )
 
@@ -194,7 +200,13 @@ class OptimalClimateOptionsFlow(config_entries.OptionsFlow):
     async def async_step_options_menu(self, user_input=None):
         return self.async_show_menu(
             step_id="options_menu",
-            menu_options=["add_climate", "edit_thresholds", "edit_sensors", "add_cover", "options_done"],
+            menu_options={
+                "add_climate":      "Klimaatapparaat toevoegen",
+                "edit_thresholds":  "Drempelwaarden aanpassen",
+                "edit_sensors":     "Sensoren aanpassen",
+                "add_cover":        "Cover toevoegen",
+                "options_done":     "Opslaan →",
+            },
         )
 
     async def async_step_add_climate(self, user_input=None):
