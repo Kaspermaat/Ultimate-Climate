@@ -2,7 +2,8 @@ DOMAIN = "optimal_climate"
 
 # Zone-level config keys
 CONF_ZONE_NAME = "zone_name"
-CONF_CLIMATE_ENTITY = "climate_entity"
+CONF_CLIMATE_ENTITY = "climate_entity"       # legacy single-entity (kept for migration)
+CONF_CLIMATE_CONFIGS = "climate_configs"     # list[dict] — one entry per climate device
 CONF_CO2_SENSOR = "co2_sensor"
 CONF_HUMIDITY_INDOOR = "humidity_indoor"
 CONF_HUMIDITY_OUTDOOR = "humidity_outdoor"
@@ -11,6 +12,19 @@ CONF_TEMP_SENSORS = "temp_sensors"          # list of extra indoor temp sensor e
 CONF_FAN_ENTITY = "fan_entity"
 CONF_WINDOW_TEMP_MIN = "window_temp_min"
 CONF_WINDOW_TEMP_MAX = "window_temp_max"
+
+# Per-climate config: stored as CONF_CLIMATE_CONFIGS = list of dicts
+CONF_CLIMATE_CONFIGS = "climate_configs"
+
+# Keys inside each climate-config dict
+CC_CLIMATE_ENTITY = "entity_id"
+CC_CLIMATE_TYPE = "climate_type"      # CLIMATE_TYPE_* below
+CC_CLIMATE_NAME = "name"              # optional display label
+
+# Climate types
+CLIMATE_TYPE_HEATING = "verwarming"
+CLIMATE_TYPE_COOLING = "koeling"
+CLIMATE_TYPE_HEAT_COOL = "verwarming_koeling"
 
 # Per-cover config: stored as CONF_COVER_CONFIGS = list of dicts
 CONF_COVER_CONFIGS = "cover_configs"

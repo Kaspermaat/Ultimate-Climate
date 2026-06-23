@@ -1,4 +1,4 @@
-"""Config flow: zone → sensoren → covers (één voor één toevoegen) → afronden."""
+"""Config flow: zone → klimaat (één voor één) → sensoren → covers → afronden."""
 from __future__ import annotations
 
 import voluptuous as vol
@@ -7,6 +7,9 @@ from homeassistant.helpers import selector
 
 from .const import (
     CC_AZIMUTH,
+    CC_CLIMATE_ENTITY,
+    CC_CLIMATE_NAME,
+    CC_CLIMATE_TYPE,
     CC_CURTAIN_MIN_OPEN,
     CC_ENTITY_ID,
     CC_FOV,
@@ -18,7 +21,10 @@ from .const import (
     CC_SUN_PROTECTION,
     CC_TEMP_SENSOR,
     CC_TYPE,
-    CONF_CLIMATE_ENTITY,
+    CLIMATE_TYPE_COOLING,
+    CLIMATE_TYPE_HEAT_COOL,
+    CLIMATE_TYPE_HEATING,
+    CONF_CLIMATE_CONFIGS,
     CONF_CO2_SENSOR,
     CONF_COVER_CONFIGS,
     CONF_FAN_ENTITY,
@@ -43,14 +49,6 @@ from .const import (
 )
 
 
-def _min_pos_default(cover_type: str) -> int:
-    if cover_type == COVER_TYPE_CURTAIN:
-        return DEFAULT_MIN_POSITION_CURTAIN
-    if cover_type == COVER_TYPE_WINDOW:
-        return DEFAULT_MIN_POSITION_WINDOW
-    return DEFAULT_MIN_POSITION_SHUTTER
-
-
 class OptimalClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
@@ -58,38 +56,58 @@ class OptimalClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._data: dict = {}
 
     @staticmethod
-    def async_get_options_flow(
-        config_entry: config_entries.ConfigEntry,
-    ) -> OptimalClimateOptionsFlow:
+    def async_get_options_flow(config_entry):
         return OptimalClimateOptionsFlow(config_entry)
 
     # ------------------------------------------------------------------
-    # Stap 1: zone naam + climate entity
+    # Stap 1: alleen de zonenaam
     # ------------------------------------------------------------------
 
     async def async_step_user(self, user_input=None):
         if user_input is not None:
-            self._data.update(user_input)
-            return await self.async_step_sensors()
+            self._data[CONF_ZONE_NAME] = user_input[CONF_ZONE_NAME]
+            return await self.async_step_climate_menu()
 
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({
                 vol.Required(CONF_ZONE_NAME, default="Woonkamer"): str,
-                vol.Optional(CONF_CLIMATE_ENTITY): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="climate")
-                ),
             }),
-            description_placeholders={"step": "1 / 3"},
         )
 
     # ------------------------------------------------------------------
-    # Stap 2: sensoren
+    # Stap 2: klimaat-apparaten (menu)
+    # ------------------------------------------------------------------
+
+    async def async_step_climate_menu(self, user_input=None):
+        count = len(self._data.get(CONF_CLIMATE_CONFIGS) or [])
+        return self.async_show_menu(
+            step_id="climate_menu",
+            menu_options=["add_climate", "climate_done"],
+            description_placeholders={"count": str(count)},
+        )
+
+    async def async_step_add_climate(self, user_input=None):
+        if user_input is not None:
+            configs = self._data.setdefault(CONF_CLIMATE_CONFIGS, [])
+            configs.append({k: v for k, v in user_input.items() if v not in (None, "")})
+            return await self.async_step_climate_menu()
+
+        return self.async_show_form(
+            step_id="add_climate",
+            data_schema=_climate_schema(),
+        )
+
+    async def async_step_climate_done(self, user_input=None):
+        return await self.async_step_sensors()
+
+    # ------------------------------------------------------------------
+    # Stap 3: sensoren
     # ------------------------------------------------------------------
 
     async def async_step_sensors(self, user_input=None):
         if user_input is not None:
-            self._data.update({k: v for k, v in user_input.items() if v is not None})
+            self._data.update({k: v for k, v in user_input.items() if v not in (None, "", [])})
             return await self.async_step_covers_menu()
 
         return self.async_show_form(
@@ -130,11 +148,10 @@ class OptimalClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                 ),
             }),
-            description_placeholders={"step": "2 / 3"},
         )
 
     # ------------------------------------------------------------------
-    # Stap 3: covers menu (voeg één voor één toe)
+    # Stap 4: covers menu
     # ------------------------------------------------------------------
 
     async def async_step_covers_menu(self, user_input=None):
@@ -148,9 +165,7 @@ class OptimalClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_add_cover(self, user_input=None):
         if user_input is not None:
             configs = self._data.setdefault(CONF_COVER_CONFIGS, [])
-            # Strip empty optional fields
-            cfg = {k: v for k, v in user_input.items() if v not in (None, "", [])}
-            configs.append(cfg)
+            configs.append({k: v for k, v in user_input.items() if v not in (None, "", [])})
             return await self.async_step_covers_menu()
 
         return self.async_show_form(
@@ -169,7 +184,7 @@ class OptimalClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 # ---------------------------------------------------------------------------
 
 class OptimalClimateOptionsFlow(config_entries.OptionsFlow):
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+    def __init__(self, config_entry) -> None:
         self._entry = config_entry
         self._options: dict = {**config_entry.data, **config_entry.options}
 
@@ -179,7 +194,18 @@ class OptimalClimateOptionsFlow(config_entries.OptionsFlow):
     async def async_step_options_menu(self, user_input=None):
         return self.async_show_menu(
             step_id="options_menu",
-            menu_options=["edit_thresholds", "edit_sensors", "add_cover", "options_done"],
+            menu_options=["add_climate", "edit_thresholds", "edit_sensors", "add_cover", "options_done"],
+        )
+
+    async def async_step_add_climate(self, user_input=None):
+        if user_input is not None:
+            configs = self._options.setdefault(CONF_CLIMATE_CONFIGS, [])
+            configs.append({k: v for k, v in user_input.items() if v not in (None, "")})
+            return await self.async_step_options_menu()
+
+        return self.async_show_form(
+            step_id="add_climate",
+            data_schema=_climate_schema(),
         )
 
     async def async_step_edit_thresholds(self, user_input=None):
@@ -243,8 +269,7 @@ class OptimalClimateOptionsFlow(config_entries.OptionsFlow):
     async def async_step_add_cover(self, user_input=None):
         if user_input is not None:
             configs = self._options.setdefault(CONF_COVER_CONFIGS, [])
-            cfg = {k: v for k, v in user_input.items() if v not in (None, "", [])}
-            configs.append(cfg)
+            configs.append({k: v for k, v in user_input.items() if v not in (None, "", [])})
             return await self.async_step_options_menu()
 
         return self.async_show_form(
@@ -257,8 +282,28 @@ class OptimalClimateOptionsFlow(config_entries.OptionsFlow):
 
 
 # ---------------------------------------------------------------------------
-# Shared cover form schema
+# Gedeelde form schemas
 # ---------------------------------------------------------------------------
+
+def _climate_schema(defaults: dict | None = None) -> vol.Schema:
+    d = defaults or {}
+    return vol.Schema({
+        vol.Required(CC_CLIMATE_ENTITY, default=d.get(CC_CLIMATE_ENTITY, "")): selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="climate")
+        ),
+        vol.Required(CC_CLIMATE_TYPE, default=d.get(CC_CLIMATE_TYPE, CLIMATE_TYPE_HEATING)): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[
+                    {"value": CLIMATE_TYPE_HEATING,  "label": "Thermostaat (verwarming)"},
+                    {"value": CLIMATE_TYPE_COOLING,  "label": "Airco (koeling)"},
+                    {"value": CLIMATE_TYPE_HEAT_COOL,"label": "Warmtepomp (verwarming + koeling)"},
+                ],
+                mode=selector.SelectSelectorMode.LIST,
+            )
+        ),
+        vol.Optional(CC_CLIMATE_NAME, default=d.get(CC_CLIMATE_NAME, "")): str,
+    })
+
 
 def _cover_schema(defaults: dict | None = None) -> vol.Schema:
     d = defaults or {}
@@ -272,25 +317,19 @@ def _cover_schema(defaults: dict | None = None) -> vol.Schema:
                 options=[
                     {"value": COVER_TYPE_SHUTTER, "label": "Shutter / rolluik"},
                     {"value": COVER_TYPE_CURTAIN, "label": "Gordijn"},
-                    {"value": COVER_TYPE_WINDOW, "label": "Automatisch raam"},
+                    {"value": COVER_TYPE_WINDOW,  "label": "Automatisch raam"},
                 ],
                 mode=selector.SelectSelectorMode.LIST,
             )
         ),
         vol.Required(CC_AZIMUTH, default=d.get(CC_AZIMUTH, 180)): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0, max=359, step=1, unit_of_measurement="°", mode="box"
-            )
+            selector.NumberSelectorConfig(min=0, max=359, step=1, unit_of_measurement="°", mode="box")
         ),
         vol.Optional(CC_FOV, default=d.get(CC_FOV, DEFAULT_FOV)): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=10, max=180, step=5, unit_of_measurement="°", mode="slider"
-            )
+            selector.NumberSelectorConfig(min=10, max=180, step=5, unit_of_measurement="°", mode="slider")
         ),
         vol.Optional(CC_MIN_POSITION, default=d.get(CC_MIN_POSITION, DEFAULT_MIN_POSITION_SHUTTER)): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0, max=90, step=5, unit_of_measurement="%", mode="slider"
-            )
+            selector.NumberSelectorConfig(min=0, max=90, step=5, unit_of_measurement="%", mode="slider")
         ),
         vol.Optional(CC_SUN_PROTECTION, default=d.get(CC_SUN_PROTECTION, True)): selector.BooleanSelector(),
         vol.Optional(CC_ILLUMINANCE_SENSOR, default=d.get(CC_ILLUMINANCE_SENSOR)): selector.EntitySelector(
@@ -299,9 +338,7 @@ def _cover_schema(defaults: dict | None = None) -> vol.Schema:
         vol.Optional(
             CC_ILLUMINANCE_THRESHOLD, default=d.get(CC_ILLUMINANCE_THRESHOLD, DEFAULT_ILLUMINANCE_THRESHOLD)
         ): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=500, max=100000, step=500, unit_of_measurement="lx", mode="box"
-            )
+            selector.NumberSelectorConfig(min=500, max=100000, step=500, unit_of_measurement="lx", mode="box")
         ),
         vol.Optional(CC_TEMP_SENSOR, default=d.get(CC_TEMP_SENSOR)): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="sensor", device_class="temperature")
@@ -312,8 +349,6 @@ def _cover_schema(defaults: dict | None = None) -> vol.Schema:
         vol.Optional(
             CC_CURTAIN_MIN_OPEN, default=d.get(CC_CURTAIN_MIN_OPEN, DEFAULT_MIN_POSITION_CURTAIN)
         ): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0, max=50, step=5, unit_of_measurement="%", mode="slider"
-            )
+            selector.NumberSelectorConfig(min=0, max=50, step=5, unit_of_measurement="%", mode="slider")
         ),
     })

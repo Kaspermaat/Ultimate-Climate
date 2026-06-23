@@ -1,0 +1,235 @@
+# ============================================================
+#  Optimal Climate — Test Package
+#  Zet dit bestand in /config/packages/optimal_climate_test.yaml
+#  Voeg aan configuration.yaml toe:
+#    homeassistant:
+#      packages: !include_dir_named packages
+# ============================================================
+
+template:
+  # ----------------------------------------------------------
+  # Sensoren (gespiegeld van input_number sliders)
+  # ----------------------------------------------------------
+  - sensor:
+      - name: "Test CO2 Sensor"
+        unique_id: "oc_test_co2"
+        unit_of_measurement: "ppm"
+        device_class: carbon_dioxide
+        state_class: measurement
+        icon: mdi:molecule-co2
+        state: "{{ states('input_number.sim_co2_ppm') | int(0) }}"
+
+      - name: "Test Luchtvochtigheid Binnen"
+        unique_id: "oc_test_hum_in"
+        unit_of_measurement: "%"
+        device_class: humidity
+        state_class: measurement
+        state: "{{ states('input_number.sim_vochtigheid_binnen') | float(0) }}"
+
+      - name: "Test Luchtvochtigheid Buiten"
+        unique_id: "oc_test_hum_out"
+        unit_of_measurement: "%"
+        device_class: humidity
+        state_class: measurement
+        state: "{{ states('input_number.sim_vochtigheid_buiten') | float(0) }}"
+
+      - name: "Test Temperatuur Buiten"
+        unique_id: "oc_test_temp_out"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: "{{ states('input_number.sim_temperatuur_buiten_degc') | float(0) }}"
+
+      - name: "Test Temperatuur Slaapkamer"
+        unique_id: "oc_test_temp_slaapkamer"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: "{{ states('input_number.sim_temperatuur_slaapkamer_degc') | float(0) }}"
+
+      - name: "Test Lichtsterkte Woonkamer"
+        unique_id: "oc_test_illuminance"
+        unit_of_measurement: "lx"
+        device_class: illuminance
+        state_class: measurement
+        state: "{{ states('input_number.sim_lichtsterkte_woonkamer_lx') | int(0) }}"
+
+  # ----------------------------------------------------------
+  # Covers (logbook logging zodat je acties kunt volgen)
+  # ----------------------------------------------------------
+  - cover:
+      - name: "Test Shutter Woonkamer Zuid"
+        unique_id: "oc_test_shutter_woonkamer_z"
+        device_class: shutter
+        position_template: >
+          {{ states('input_number.sim_co2_ppm') | int(0) | regex_replace('.+', '100') }}
+        open_cover:
+          - service: logbook.log
+            data: {name: "Shutter WK Zuid", message: "OPEN"}
+        close_cover:
+          - service: logbook.log
+            data: {name: "Shutter WK Zuid", message: "CLOSE"}
+        set_cover_position:
+          - service: logbook.log
+            data:
+              name: "Shutter WK Zuid"
+              message: "POSITIE → {{ position }}%"
+        stop_cover:
+          - service: logbook.log
+            data: {name: "Shutter WK Zuid", message: "STOP"}
+
+      - name: "Test Shutter Woonkamer West"
+        unique_id: "oc_test_shutter_woonkamer_w"
+        device_class: shutter
+        position_template: "100"
+        open_cover:
+          - service: logbook.log
+            data: {name: "Shutter WK West", message: "OPEN"}
+        close_cover:
+          - service: logbook.log
+            data: {name: "Shutter WK West", message: "CLOSE"}
+        set_cover_position:
+          - service: logbook.log
+            data: {name: "Shutter WK West", message: "POSITIE → {{ position }}%"}
+        stop_cover:
+          - service: logbook.log
+            data: {name: "Shutter WK West", message: "STOP"}
+
+      - name: "Test Gordijn Woonkamer"
+        unique_id: "oc_test_gordijn_woonkamer"
+        device_class: curtain
+        position_template: "100"
+        open_cover:
+          - service: logbook.log
+            data: {name: "Gordijn Woonkamer", message: "OPEN"}
+        close_cover:
+          - service: logbook.log
+            data: {name: "Gordijn Woonkamer", message: "CLOSE"}
+        set_cover_position:
+          - service: logbook.log
+            data: {name: "Gordijn Woonkamer", message: "POSITIE → {{ position }}%"}
+        stop_cover:
+          - service: logbook.log
+            data: {name: "Gordijn Woonkamer", message: "STOP"}
+
+      - name: "Test Raam Woonkamer"
+        unique_id: "oc_test_raam_woonkamer"
+        device_class: window
+        position_template: "0"
+        open_cover:
+          - service: logbook.log
+            data: {name: "Raam Woonkamer", message: "OPEN"}
+        close_cover:
+          - service: logbook.log
+            data: {name: "Raam Woonkamer", message: "CLOSE"}
+        set_cover_position:
+          - service: logbook.log
+            data: {name: "Raam Woonkamer", message: "POSITIE → {{ position }}%"}
+        stop_cover:
+          - service: logbook.log
+            data: {name: "Raam Woonkamer", message: "STOP"}
+
+      - name: "Test Shutter Slaapkamer Oost"
+        unique_id: "oc_test_shutter_slaapkamer_o"
+        device_class: shutter
+        position_template: "100"
+        open_cover:
+          - service: logbook.log
+            data: {name: "Shutter SK Oost", message: "OPEN"}
+        close_cover:
+          - service: logbook.log
+            data: {name: "Shutter SK Oost", message: "CLOSE"}
+        set_cover_position:
+          - service: logbook.log
+            data: {name: "Shutter SK Oost", message: "POSITIE → {{ position }}%"}
+        stop_cover:
+          - service: logbook.log
+            data: {name: "Shutter SK Oost", message: "STOP"}
+
+      - name: "Test Gordijn Slaapkamer"
+        unique_id: "oc_test_gordijn_slaapkamer"
+        device_class: curtain
+        position_template: "100"
+        open_cover:
+          - service: logbook.log
+            data: {name: "Gordijn Slaapkamer", message: "OPEN"}
+        close_cover:
+          - service: logbook.log
+            data: {name: "Gordijn Slaapkamer", message: "CLOSE"}
+        set_cover_position:
+          - service: logbook.log
+            data: {name: "Gordijn Slaapkamer", message: "POSITIE → {{ position }}%"}
+        stop_cover:
+          - service: logbook.log
+            data: {name: "Gordijn Slaapkamer", message: "STOP"}
+
+      - name: "Test Raam Slaapkamer"
+        unique_id: "oc_test_raam_slaapkamer"
+        device_class: window
+        position_template: "0"
+        open_cover:
+          - service: logbook.log
+            data: {name: "Raam Slaapkamer", message: "OPEN"}
+        close_cover:
+          - service: logbook.log
+            data: {name: "Raam Slaapkamer", message: "CLOSE"}
+        set_cover_position:
+          - service: logbook.log
+            data: {name: "Raam Slaapkamer", message: "POSITIE → {{ position }}%"}
+        stop_cover:
+          - service: logbook.log
+            data: {name: "Raam Slaapkamer", message: "STOP"}
+
+  # ----------------------------------------------------------
+  # Afzuiging (fan) — staat aan als snelheid > 0
+  # ----------------------------------------------------------
+  - fan:
+      - name: "Test Afzuiging"
+        unique_id: "oc_test_afzuiging"
+        value_template: >
+          {{ 'on' if states('input_number.sim_fan_snelheid') | int(0) > 0 else 'off' }}
+        percentage_template: "{{ states('input_number.sim_fan_snelheid') | int(0) }}"
+        turn_on:
+          - service: input_number.set_value
+            target:
+              entity_id: input_number.sim_fan_snelheid
+            data:
+              value: 50
+        turn_off:
+          - service: input_number.set_value
+            target:
+              entity_id: input_number.sim_fan_snelheid
+            data:
+              value: 0
+        set_percentage:
+          - service: input_number.set_value
+            target:
+              entity_id: input_number.sim_fan_snelheid
+            data:
+              value: "{{ percentage }}"
+        speed_count: 10
+
+  # ----------------------------------------------------------
+  # Thermostaat (climate)
+  # ----------------------------------------------------------
+  - climate:
+      - name: "Test Thermostaat Woonkamer"
+        unique_id: "oc_test_thermostaat"
+        current_temperature_template: >
+          {{ states('input_number.sim_temperatuur_slaapkamer_degc') | float(20.0) }}
+        target_temperature_template: "21.0"
+        hvac_mode_template: "heat"
+        hvac_modes:
+          - "off"
+          - heat
+          - cool
+          - auto
+        set_hvac_mode:
+          - service: logbook.log
+            data: {name: "Thermostaat", message: "HVAC mode → {{ hvac_mode }}"}
+        set_temperature:
+          - service: logbook.log
+            data: {name: "Thermostaat", message: "Setpoint → {{ temperature }}°C"}
+        min_temp: 15
+        max_temp: 28
+        temp_step: 0.5

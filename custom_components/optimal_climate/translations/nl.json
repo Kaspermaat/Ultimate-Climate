@@ -3,11 +3,26 @@
     "step": {
       "user": {
         "title": "Zone instellen",
-        "description": "Stap {step} — geef de zone een naam.",
+        "description": "Geef de zone een naam. Klimaatapparaten voeg je in de volgende stap toe.",
         "data": {
-          "zone_name": "Zonenaam",
-          "climate_entity": "Klimaatentiteit (thermostaat / airco)"
+          "zone_name": "Zonenaam"
         }
+      },
+      "climate_menu": {
+        "title": "Klimaatapparaten",
+        "description": "{count} apparaat/apparaten toegevoegd. Voeg een thermostaat of airco toe, of ga door naar de sensoren."
+      },
+      "add_climate": {
+        "title": "Klimaatapparaat toevoegen",
+        "description": "Selecteer de entiteit en geef aan of het een thermostaat (verwarming), airco (koeling) of warmtepomp is.",
+        "data": {
+          "entity_id": "Klimaatentiteit",
+          "climate_type": "Type",
+          "name": "Naam (optioneel)"
+        }
+      },
+      "climate_done": {
+        "title": "Verder naar sensoren"
       },
       "sensors": {
         "title": "Sensoren koppelen",
@@ -58,6 +73,14 @@
     "step": {
       "options_menu": {
         "title": "Wat wil je aanpassen?"
+      },
+      "add_climate": {
+        "title": "Klimaatapparaat toevoegen",
+        "data": {
+          "entity_id": "Klimaatentiteit",
+          "climate_type": "Type",
+          "name": "Naam (optioneel)"
+        }
       },
       "edit_thresholds": {
         "title": "Drempelwaarden",

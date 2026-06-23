@@ -18,6 +18,8 @@ from .algorithms.fan import FanAdvice, Season, detect_season
 from .algorithms.ventilation import VentilationAdvice
 from .const import (
     CC_AZIMUTH,
+    CC_CLIMATE_ENTITY,
+    CC_CLIMATE_TYPE,
     CC_CURTAIN_MIN_OPEN,
     CC_ENTITY_ID,
     CC_FOV,
@@ -28,9 +30,11 @@ from .const import (
     CC_SUN_PROTECTION,
     CC_TEMP_SENSOR,
     CC_TYPE,
+    CLIMATE_TYPE_COOLING,
     CO2_GOOD,
     CO2_MODERATE,
     CO2_POOR,
+    CONF_CLIMATE_CONFIGS,
     CONF_CLIMATE_ENTITY,
     CONF_CO2_SENSOR,
     CONF_COVER_CONFIGS,
@@ -160,8 +164,16 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             return None
         return _safe_float(state.state)
 
+    def _climate_config_list(self) -> list[dict]:
+        """Return list of climate configs, with legacy single-entity migration."""
+        cfgs = list(self._config.get(CONF_CLIMATE_CONFIGS) or [])
+        # Migrate old single-entity config
+        if not cfgs and self._config.get(CONF_CLIMATE_ENTITY):
+            cfgs = [{CC_CLIMATE_ENTITY: self._config[CONF_CLIMATE_ENTITY], CC_CLIMATE_TYPE: "verwarming"}]
+        return cfgs
+
     def _average_temp_indoor(self, climate_temp: float | None) -> float | None:
-        """Average all configured indoor temperature sensors + climate entity."""
+        """Average all configured indoor temperature sensors + climate entities."""
         values: list[float] = []
         if climate_temp is not None:
             values.append(climate_temp)
@@ -174,18 +186,35 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
         return sum(values) / len(values)
 
     def _collect_states(self) -> SensorStates:
-        climate_id = self._config.get(CONF_CLIMATE_ENTITY)
-        climate_state = self.hass.states.get(climate_id) if climate_id else None
-
-        climate_temp: float | None = None
-        temp_setpoint: float | None = None
+        # Gather data from all configured climate entities
+        climate_temps: list[float] = []
+        temp_setpoints: list[float] = []
         hvac_action: str | None = None
 
-        if climate_state and climate_state.state not in ("unavailable", "unknown"):
-            attrs = climate_state.attributes
-            climate_temp = _safe_float(attrs.get("current_temperature"))
-            temp_setpoint = _safe_float(attrs.get("temperature"))
-            hvac_action = attrs.get("hvac_action")
+        for cfg in self._climate_config_list():
+            entity_id = cfg.get(CC_CLIMATE_ENTITY)
+            if not entity_id:
+                continue
+            state = self.hass.states.get(entity_id)
+            if not state or state.state in ("unavailable", "unknown"):
+                continue
+            attrs = state.attributes
+            t = _safe_float(attrs.get("current_temperature"))
+            if t is not None:
+                climate_temps.append(t)
+            sp = _safe_float(attrs.get("temperature"))
+            if sp is not None:
+                climate_type = cfg.get(CC_CLIMATE_TYPE, "verwarming")
+                # For cooling entities, flip the setpoint perspective for comfort scoring
+                if climate_type == CLIMATE_TYPE_COOLING:
+                    temp_setpoints.append(sp)
+                else:
+                    temp_setpoints.append(sp)
+            if hvac_action is None:
+                hvac_action = attrs.get("hvac_action")
+
+        climate_temp = sum(climate_temps) / len(climate_temps) if climate_temps else None
+        temp_setpoint = sum(temp_setpoints) / len(temp_setpoints) if temp_setpoints else None
 
         sun_state = self.hass.states.get("sun.sun")
         sun_azimuth: float | None = None
