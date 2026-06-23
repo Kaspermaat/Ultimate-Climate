@@ -67,6 +67,7 @@ _LOGGER = logging.getLogger(__name__)
 _FAN_HYSTERESIS = 5
 _COVER_AWAY_POSITION = 10
 _COVER_SLEEP_POSITION = 0
+_NATURAL_COOLING_DELTA = 2.0   # buiten moet minstens 2°C koeler zijn dan binnen
 
 
 def _safe_float(value: object) -> float | None:
@@ -89,6 +90,8 @@ class SensorStates:
     climate_hvac_action: str | None = None
     sun_azimuth: float | None = None
     sun_elevation: float | None = None
+    ac_actively_cooling: bool = False       # any cooling entity has hvac_action=cooling
+    natural_cooling_possible: bool = False  # buiten koeler dan binnen met voldoende marge
 
 
 @dataclass
@@ -190,6 +193,7 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
         climate_temps: list[float] = []
         temp_setpoints: list[float] = []
         hvac_action: str | None = None
+        ac_actively_cooling = False
 
         for cfg in self._climate_config_list():
             entity_id = cfg.get(CC_CLIMATE_ENTITY)
@@ -204,17 +208,24 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
                 climate_temps.append(t)
             sp = _safe_float(attrs.get("temperature"))
             if sp is not None:
-                climate_type = cfg.get(CC_CLIMATE_TYPE, "verwarming")
-                # For cooling entities, flip the setpoint perspective for comfort scoring
-                if climate_type == CLIMATE_TYPE_COOLING:
-                    temp_setpoints.append(sp)
-                else:
-                    temp_setpoints.append(sp)
+                temp_setpoints.append(sp)
+            action = attrs.get("hvac_action")
             if hvac_action is None:
-                hvac_action = attrs.get("hvac_action")
+                hvac_action = action
+            # Detect active cooling: cooling-type entity with hvac_action=cooling
+            if cfg.get(CC_CLIMATE_TYPE) == CLIMATE_TYPE_COOLING and action == "cooling":
+                ac_actively_cooling = True
 
         climate_temp = sum(climate_temps) / len(climate_temps) if climate_temps else None
         temp_setpoint = sum(temp_setpoints) / len(temp_setpoints) if temp_setpoints else None
+
+        temp_indoor_avg = self._average_temp_indoor(climate_temp)
+        temp_outdoor_val = self._float_state(self._config.get(CONF_TEMP_OUTDOOR))
+        natural_cooling = (
+            temp_indoor_avg is not None
+            and temp_outdoor_val is not None
+            and temp_indoor_avg - temp_outdoor_val >= _NATURAL_COOLING_DELTA
+        )
 
         sun_state = self.hass.states.get("sun.sun")
         sun_azimuth: float | None = None
@@ -227,12 +238,14 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             co2=self._float_state(self._config.get(CONF_CO2_SENSOR)),
             humidity_indoor=self._float_state(self._config.get(CONF_HUMIDITY_INDOOR)),
             humidity_outdoor=self._float_state(self._config.get(CONF_HUMIDITY_OUTDOOR)),
-            temp_indoor=self._average_temp_indoor(climate_temp),
-            temp_outdoor=self._float_state(self._config.get(CONF_TEMP_OUTDOOR)),
+            temp_indoor=temp_indoor_avg,
+            temp_outdoor=temp_outdoor_val,
             temp_setpoint=temp_setpoint,
             climate_hvac_action=hvac_action,
             sun_azimuth=sun_azimuth,
             sun_elevation=sun_elevation,
+            ac_actively_cooling=ac_actively_cooling,
+            natural_cooling_possible=natural_cooling,
         )
 
     def _update_co2_history(self, co2: float | None) -> None:
@@ -422,11 +435,29 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             target = pos.position
             result_reason = pos.reason
 
-        # For windows: check outdoor temp gate
+        # For windows: AC- en temperatuurlogica
         if cover_type == COVER_TYPE_WINDOW and target > 0:
             if not self._window_temp_allowed(states):
                 target = 0
                 result_reason = "temperatuur_buiten_bereik"
+            elif states.ac_actively_cooling and not states.natural_cooling_possible:
+                # Airco is aan en buitenlucht is niet koeler dan binnen → raam dicht
+                target = 0
+                result_reason = "airco_actief"
+                _LOGGER.debug(
+                    "Raam %s blijft dicht: airco actief en buiten niet koeler dan binnen",
+                    entity_id,
+                )
+            elif states.natural_cooling_possible and states.ac_actively_cooling:
+                # Buitenlucht koeler dan binnen → raam open, airco uit
+                result_reason = "natuurlijke_koeling"
+                _LOGGER.info(
+                    "Raam %s open voor natuurlijke koeling (buiten %.1f°C, binnen %.1f°C) — airco wordt uitgeschakeld",
+                    entity_id,
+                    states.temp_outdoor,
+                    states.temp_indoor,
+                )
+                await self._async_turn_off_cooling_entities()
 
         # For windows: handle curtain dependency
         if cover_type == COVER_TYPE_WINDOW and target > 0 and linked_curtain:
@@ -445,6 +476,34 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             reason=result_reason,
             label=str(result_reason),
         )
+
+    # ------------------------------------------------------------------
+    # Airco uitschakelen bij natuurlijke koeling
+    # ------------------------------------------------------------------
+
+    async def _async_turn_off_cooling_entities(self) -> None:
+        """Zet alle actief-koelende airco's uit als natuurlijke ventilatie volstaat."""
+        for cfg in self._climate_config_list():
+            if cfg.get(CC_CLIMATE_TYPE) != CLIMATE_TYPE_COOLING:
+                continue
+            entity_id = cfg.get(CC_CLIMATE_ENTITY)
+            if not entity_id:
+                continue
+            state = self.hass.states.get(entity_id)
+            if not state or state.attributes.get("hvac_action") != "cooling":
+                continue
+            try:
+                await self.hass.services.async_call(
+                    "climate", "set_hvac_mode",
+                    {"entity_id": entity_id, "hvac_mode": "off"},
+                    blocking=True,
+                )
+                _LOGGER.info(
+                    "Airco %s uitgeschakeld — buitenlucht koeler dan binnen, ramen gaan open",
+                    entity_id,
+                )
+            except Exception as exc:
+                _LOGGER.error("Airco %s uitschakelen mislukt: %s", entity_id, exc)
 
     # ------------------------------------------------------------------
     # Temperature gate for windows
