@@ -424,8 +424,20 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             )
             return 20
 
-        # Binnen op setpoint: volledig open voor luchtverversing
-        return 100
+        # Binnen op setpoint — alleen open als CO2 of vochtigheid aanleiding geeft
+        co2 = states.co2
+        if co2 is not None and co2 > CO2_POOR:
+            return 100   # CO2 kritiek → maximaal ventileren
+        if co2 is not None and co2 > CO2_MODERATE:
+            return 60    # CO2 verhoogd → flink ventileren
+        if co2 is not None and co2 > CO2_GOOD:
+            return 30    # CO2 matig → beetje ventileren
+        # CO2 goed en temp op setpoint → raam dicht
+        _LOGGER.debug(
+            "Raam dicht: temp op setpoint (%.1f°C) en CO2 goed (%.0f ppm)",
+            indoor, co2 if co2 is not None else 0,
+        )
+        return 0
 
     # ------------------------------------------------------------------
     # Fan actuator
