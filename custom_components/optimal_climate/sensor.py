@@ -17,6 +17,7 @@ _REASON_LABELS: dict[str, str] = {
     "harde_wind":               "harde wind — raam dicht",
     "temperatuur_buiten_bereik":"buitentemperatuur buiten bereik",
     "airco_actief":             "airco actief — raam dicht",
+    "verwarming_actief":        "thermostaat verwarmt — raam dicht",
     "natuurlijke_koeling":      "natuurlijke koeling — raam open, airco uit",
     "gordijn_dicht":            "gordijn geblokkeerd",
     "ventilatie":               "open voor ventilatie",
@@ -390,6 +391,7 @@ class ActivityLogSensor(_BaseClimateSensor):
         # Airco-status
         klimaat = {
             "airco_koelt_actief": s.ac_actively_cooling,
+            "verwarming_actief": s.heating_active,
             "natuurlijke_koeling_mogelijk": s.natural_cooling_possible,
             "modus": snap.mode,
         }

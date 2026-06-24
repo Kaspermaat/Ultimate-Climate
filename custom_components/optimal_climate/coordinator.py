@@ -105,6 +105,7 @@ class SensorStates:
     sun_azimuth: float | None = None
     sun_elevation: float | None = None
     ac_actively_cooling: bool = False       # any cooling entity has hvac_action=cooling
+    heating_active: bool = False            # any heating entity has hvac_action=heating
     natural_cooling_possible: bool = False  # buiten koeler dan binnen met voldoende marge
     ideal_temp: float | None = None         # centrale doeltemperatuur (config > thermostaat-setpoint)
     # Weather (auto-detected via Buienradar / weather.home)
@@ -281,6 +282,7 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
         temp_setpoints: list[float] = []
         hvac_action: str | None = None
         ac_actively_cooling = False
+        heating_active = False
 
         for cfg in self._climate_config_list():
             entity_id = cfg.get(CC_CLIMATE_ENTITY)
@@ -299,9 +301,12 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             action = attrs.get("hvac_action")
             if hvac_action is None:
                 hvac_action = action
-            # Detect active cooling: cooling-type entity with hvac_action=cooling
+            # Actieve koeling detecteren
             if cfg.get(CC_CLIMATE_TYPE) == CLIMATE_TYPE_COOLING and action == "cooling":
                 ac_actively_cooling = True
+            # Actieve verwarming detecteren
+            if cfg.get(CC_CLIMATE_TYPE) == CLIMATE_TYPE_HEATING and action == "heating":
+                heating_active = True
 
         climate_temp = sum(climate_temps) / len(climate_temps) if climate_temps else None
         temp_setpoint = sum(temp_setpoints) / len(temp_setpoints) if temp_setpoints else None
@@ -337,6 +342,7 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             sun_azimuth=sun_azimuth,
             sun_elevation=sun_elevation,
             ac_actively_cooling=ac_actively_cooling,
+            heating_active=heating_active,
             natural_cooling_possible=natural_cooling,
             ideal_temp=ideal_temp,
             **weather,
@@ -651,6 +657,11 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
                 target = 0
                 result_reason = "airco_actief"
                 _LOGGER.debug("Raam %s dicht: airco actief", entity_id)
+            elif states.heating_active:
+                # Thermostaat verwarmt → raam dicht, anders gooi je warmte weg
+                target = 0
+                result_reason = "verwarming_actief"
+                _LOGGER.debug("Raam %s dicht: thermostaat verwarmt", entity_id)
             elif not self._window_temp_allowed(states):
                 target = 0
                 result_reason = "temperatuur_buiten_bereik"
@@ -862,6 +873,7 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             humidity_outdoor_margin=HUMIDITY_OUTDOOR_MARGIN,
             min_speed=FAN_MIN_SPEED,
             ac_actively_cooling=states.ac_actively_cooling,
+            heating_active=states.heating_active,
         )
 
         cover_results = await self._async_apply_actions(fan, states, season)

@@ -70,6 +70,7 @@ def calculate(
     humidity_outdoor_margin: int = 10,
     min_speed: int = 20,
     ac_actively_cooling: bool = False,
+    heating_active: bool = False,
 ) -> FanAdvice:
     """Return advised fan speed.
 
@@ -93,10 +94,12 @@ def calculate(
         return FanAdvice(speed_pct=75, reason=FanReason.CO2_ELEVATED, season=season)
 
     # 3. Summer cooling — buiten koeler dan binnen
-    #    Geblokkeerd als airco actief: fan trekt dan warme buitenlucht naar binnen
+    #    Geblokkeerd als airco actief of thermostaat verwarmt:
+    #    in beide gevallen zou de fan energie verspillen
     if (
         season == Season.SUMMER
         and not ac_actively_cooling
+        and not heating_active
         and temp_indoor is not None
         and temp_outdoor is not None
         and temp_indoor - temp_outdoor >= summer_cooling_delta
