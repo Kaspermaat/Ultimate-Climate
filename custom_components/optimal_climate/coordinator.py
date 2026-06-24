@@ -792,7 +792,11 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             away_window_pos = int(
                 self._config.get(CONF_WINDOW_AWAY_POSITION, DEFAULT_WINDOW_AWAY_POSITION)
             )
-            await self._async_apply_fan(FAN_MIN_SPEED)
+            # Fan blijft CO₂/vochtigheid respecteren ook bij afwezigheid — gezondheid gaat voor
+            away_fan = max(FAN_MIN_SPEED, fan.speed_pct) if fan.reason.value in (
+                "co2_kritiek", "co2_verhoogd", "co2_matig", "vochtigheid_hoog"
+            ) else FAN_MIN_SPEED
+            await self._async_apply_fan(away_fan)
             for cfg in cover_cfgs:
                 cover_type = cfg.get(CC_TYPE, "shutter")
                 if cover_type == COVER_TYPE_WINDOW:
