@@ -13,7 +13,7 @@ from .algorithms import fan as fan_algo
 from .algorithms import ventilation as ventilation_algo
 from .algorithms import cover as cover_algo
 from .algorithms.comfort import ComfortScore
-from .algorithms.cover import CoverPosition
+from .algorithms.cover import CoverPosition, CoverReason
 from .algorithms.fan import FanAdvice, Season, detect_season
 from .algorithms.ventilation import VentilationAdvice
 from .const import (
@@ -46,12 +46,19 @@ from .const import (
     CONF_TEMP_SENSORS,
     CONF_WINDOW_TEMP_MAX,
     CONF_WINDOW_TEMP_MIN,
+    CONF_WINDOW_AWAY_POSITION,
+    CONF_WINDOW_RAIN_POSITION,
+    CONF_WINDOW_SLEEP_POSITION,
     COVER_HYSTERESIS,
+    COVER_TYPE_CURTAIN,
     COVER_TYPE_WINDOW,
     DEFAULT_FOV,
     DEFAULT_ILLUMINANCE_THRESHOLD,
     DEFAULT_MIN_POSITION_CURTAIN,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_WINDOW_AWAY_POSITION,
+    DEFAULT_WINDOW_RAIN_POSITION,
+    DEFAULT_WINDOW_SLEEP_POSITION,
     DEFAULT_WINDOW_TEMP_MAX,
     DEFAULT_WINDOW_TEMP_MIN,
     DOMAIN,
@@ -483,13 +490,34 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             target = 100
             result_reason = "zonwering_uit"
         elif cover_type == COVER_TYPE_WINDOW:
-            # Windows follow ventilation, not sun angle
+            # Ramen volgen ventilatie-behoefte, niet de zonhoek
             target = 100 if self._mode == MODE_AUTO else 0
             result_reason = "ventilatie"
         elif states.heavily_overcast:
-            # Zware bewolking → zon schijnt niet door, zonwering niet nodig
-            target = 100
-            result_reason = "bewolkt"
+            # Zware bewolking → maar lux-sensor wint als die toch hoge lichtsterkte meet
+            lux_override = (
+                illuminance is not None and illuminance >= illuminance_threshold
+            )
+            if lux_override:
+                _LOGGER.debug(
+                    "Cover %s: bewolkt maar lux %.0f lx ≥ drempel %.0f lx → normale algo",
+                    entity_id, illuminance, illuminance_threshold,
+                )
+                pos = cover_algo.calculate(
+                    sun_azimuth=states.sun_azimuth or 0.0,
+                    sun_elevation=states.sun_elevation or -1.0,
+                    window_azimuth=azimuth,
+                    season=season,
+                    window_fov=fov,
+                    min_position=min_pos,
+                    illuminance=illuminance,
+                    illuminance_threshold=illuminance_threshold,
+                )
+                target = pos.position
+                result_reason = pos.reason
+            else:
+                target = 100
+                result_reason = "bewolkt"
         else:
             pos = cover_algo.calculate(
                 sun_azimuth=states.sun_azimuth or 0.0,
@@ -504,12 +532,20 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             target = pos.position
             result_reason = pos.reason
 
+            # Gordijnen gaan 's nachts dicht (shutters blijven open)
+            if cover_type == COVER_TYPE_CURTAIN and result_reason == CoverReason.SUN_BELOW_HORIZON:
+                target = 0
+                result_reason = "nacht_gordijn_dicht"
+
         # For windows: regen/wind sluiten altijd, daarna temp/airco-logica
         if cover_type == COVER_TYPE_WINDOW and target > 0:
+            rain_pos = int(self._config.get(CONF_WINDOW_RAIN_POSITION, DEFAULT_WINDOW_RAIN_POSITION))
             if states.rain_active:
-                target = 0
+                target = rain_pos
                 result_reason = "regen"
-                _LOGGER.debug("Raam %s dicht: regen (%s)", entity_id, states.weather_condition)
+                _LOGGER.debug(
+                    "Raam %s → %d%%: regen (%s)", entity_id, rain_pos, states.weather_condition
+                )
             elif states.wind_too_strong:
                 target = 0
                 result_reason = "harde_wind"
@@ -517,27 +553,25 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
                     "Raam %s dicht: harde wind (%.0f km/h)",
                     entity_id, states.wind_speed or 0,
                 )
+            elif states.ac_actively_cooling:
+                # Airco actief → raam nooit open, anders gaat alle koude lucht verloren
+                target = 0
+                result_reason = "airco_actief"
+                _LOGGER.debug("Raam %s dicht: airco actief", entity_id)
             elif not self._window_temp_allowed(states):
                 target = 0
                 result_reason = "temperatuur_buiten_bereik"
-            elif states.ac_actively_cooling and not states.natural_cooling_possible:
-                # Airco is aan en buitenlucht is niet koeler dan binnen → raam dicht
-                target = 0
-                result_reason = "airco_actief"
-                _LOGGER.debug(
-                    "Raam %s blijft dicht: airco actief en buiten niet koeler dan binnen",
-                    entity_id,
-                )
-            elif states.natural_cooling_possible and states.ac_actively_cooling:
-                # Buitenlucht koeler dan binnen → raam open, airco uit
+            elif states.natural_cooling_possible:
+                # Buitenlucht ≥ 2°C koeler dan binnen → raam open, airco uit indien aan
                 result_reason = "natuurlijke_koeling"
                 _LOGGER.info(
-                    "Raam %s open voor natuurlijke koeling (buiten %.1f°C, binnen %.1f°C) — airco wordt uitgeschakeld",
+                    "Raam %s open voor natuurlijke koeling (buiten %.1f°C, binnen %.1f°C)",
                     entity_id,
                     states.temp_outdoor,
                     states.temp_indoor,
                 )
-                await self._async_turn_off_cooling_entities()
+                if states.ac_actively_cooling:
+                    await self._async_turn_off_cooling_entities()
 
         # For windows: handle curtain dependency
         if cover_type == COVER_TYPE_WINDOW and target > 0 and linked_curtain:
@@ -590,19 +624,41 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
     # ------------------------------------------------------------------
 
     def _window_temp_allowed(self, states: SensorStates) -> bool:
-        if states.temp_outdoor is None:
-            return True
-        temp_min = float(self._config.get(CONF_WINDOW_TEMP_MIN, DEFAULT_WINDOW_TEMP_MIN))
-        temp_max = float(self._config.get(CONF_WINDOW_TEMP_MAX, DEFAULT_WINDOW_TEMP_MAX))
-        if temp_min <= states.temp_outdoor <= temp_max:
-            return True
+        outdoor = states.temp_outdoor
+        indoor = states.temp_indoor
+
+        if outdoor is None:
+            return True  # onbekend → open
+
         co2_critical = states.co2 is not None and states.co2 > CO2_POOR
-        if co2_critical:
+        temp_min = float(self._config.get(CONF_WINDOW_TEMP_MIN, DEFAULT_WINDOW_TEMP_MIN))
+
+        # Absolute ondergrens: te koud voor comfort
+        if outdoor < temp_min:
+            if co2_critical:
+                _LOGGER.debug(
+                    "Raam toch open ondanks buitentemp %.1f°C — CO₂ kritiek", outdoor
+                )
+                return True
+            return False
+
+        # Relatieve bovengrens: als buitenlucht warmer is dan binnenlucht voegt
+        # ventilatie alleen maar warmte toe — raam dicht.
+        # Uitzondering: CO₂ kritiek (luchtkwaliteit gaat voor comfort).
+        if indoor is not None and outdoor >= indoor:
+            if co2_critical:
+                _LOGGER.debug(
+                    "Raam toch open: buiten %.1f°C >= binnen %.1f°C, maar CO₂ kritiek",
+                    outdoor, indoor,
+                )
+                return True
             _LOGGER.debug(
-                "Raam openen ondanks buitentemp %.1f°C — CO₂ kritiek", states.temp_outdoor
+                "Raam dicht: buiten %.1f°C >= binnen %.1f°C — ventilatie voegt warmte toe",
+                outdoor, indoor,
             )
-            return True
-        return False
+            return False
+
+        return True
 
     # ------------------------------------------------------------------
     # Mode-aware action dispatch
@@ -615,19 +671,35 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
         results: list[CoverResult] = []
 
         if self.mode == MODE_AWAY:
+            away_window_pos = int(
+                self._config.get(CONF_WINDOW_AWAY_POSITION, DEFAULT_WINDOW_AWAY_POSITION)
+            )
             await self._async_apply_fan(FAN_MIN_SPEED)
             for cfg in cover_cfgs:
                 cover_type = cfg.get(CC_TYPE, "shutter")
-                pos = 0 if cover_type == COVER_TYPE_WINDOW else _COVER_AWAY_POSITION
-                results.append(await self._async_apply_one_cover(cfg, states, season, forced_position=pos))
+                if cover_type == COVER_TYPE_WINDOW:
+                    # Raam op geconfigureerde positie (standaard dicht)
+                    results.append(
+                        await self._async_apply_one_cover(cfg, states, season, forced_position=away_window_pos)
+                    )
+                else:
+                    # Shutters en gordijnen: gewone zonwerings-logica (weren warmte ook bij afwezigheid)
+                    results.append(await self._async_apply_one_cover(cfg, states, season))
             return results
 
         if self.mode == MODE_SLEEP:
+            sleep_window_pos = int(
+                self._config.get(CONF_WINDOW_SLEEP_POSITION, DEFAULT_WINDOW_SLEEP_POSITION)
+            )
             await self._async_apply_fan(min(fan.speed_pct, 50))
             for cfg in cover_cfgs:
-                results.append(
-                    await self._async_apply_one_cover(cfg, states, season, forced_position=_COVER_SLEEP_POSITION)
-                )
+                cover_type = cfg.get(CC_TYPE, "shutter")
+                if cover_type == COVER_TYPE_WINDOW:
+                    results.append(
+                        await self._async_apply_one_cover(cfg, states, season, forced_position=sleep_window_pos)
+                    )
+                else:
+                    results.append(await self._async_apply_one_cover(cfg, states, season))
             return results
 
         if self.mode != MODE_AUTO:
@@ -681,6 +753,7 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             summer_cooling_delta=FAN_SUMMER_COOLING_DELTA,
             humidity_outdoor_margin=HUMIDITY_OUTDOOR_MARGIN,
             min_speed=FAN_MIN_SPEED,
+            ac_actively_cooling=states.ac_actively_cooling,
         )
 
         cover_results = await self._async_apply_actions(fan, states, season)

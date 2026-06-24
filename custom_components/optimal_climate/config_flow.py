@@ -32,6 +32,9 @@ from .const import (
     CONF_HUMIDITY_OUTDOOR,
     CONF_TEMP_OUTDOOR,
     CONF_TEMP_SENSORS,
+    CONF_WINDOW_AWAY_POSITION,
+    CONF_WINDOW_RAIN_POSITION,
+    CONF_WINDOW_SLEEP_POSITION,
     CONF_WINDOW_TEMP_MAX,
     CONF_WINDOW_TEMP_MIN,
     CONF_ZONE_NAME,
@@ -43,6 +46,9 @@ from .const import (
     DEFAULT_MIN_POSITION_CURTAIN,
     DEFAULT_MIN_POSITION_SHUTTER,
     DEFAULT_MIN_POSITION_WINDOW,
+    DEFAULT_WINDOW_AWAY_POSITION,
+    DEFAULT_WINDOW_RAIN_POSITION,
+    DEFAULT_WINDOW_SLEEP_POSITION,
     DEFAULT_WINDOW_TEMP_MAX,
     DEFAULT_WINDOW_TEMP_MIN,
     DOMAIN,
@@ -144,10 +150,24 @@ class OptimalClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                 ),
                 vol.Optional(
-                    CONF_WINDOW_TEMP_MAX, default=DEFAULT_WINDOW_TEMP_MAX
+                    CONF_WINDOW_AWAY_POSITION, default=DEFAULT_WINDOW_AWAY_POSITION
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
-                        min=15, max=40, step=1, unit_of_measurement="°C", mode="slider"
+                        min=0, max=20, step=5, unit_of_measurement="%", mode="slider"
+                    )
+                ),
+                vol.Optional(
+                    CONF_WINDOW_SLEEP_POSITION, default=DEFAULT_WINDOW_SLEEP_POSITION
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0, max=20, step=5, unit_of_measurement="%", mode="slider"
+                    )
+                ),
+                vol.Optional(
+                    CONF_WINDOW_RAIN_POSITION, default=DEFAULT_WINDOW_RAIN_POSITION
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0, max=10, step=5, unit_of_measurement="%", mode="slider"
                     )
                 ),
             }),

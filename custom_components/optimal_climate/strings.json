@@ -35,7 +35,10 @@
           "temp_sensors": "Extra binnentemperatuur-sensoren (meerdere mogelijk)",
           "fan_entity": "Afzuiging / ventilatie (fan of number entiteit)",
           "window_temp_min": "Min. buitentemp. voor ramen openen (°C)",
-          "window_temp_max": "Max. buitentemp. voor ramen openen (°C)"
+          "window_temp_max": "Max. buitentemp. voor ramen openen (°C)",
+          "window_away_position": "Raamopening bij Afwezig (0 = dicht, 5–20 = kier)",
+          "window_sleep_position": "Raamopening bij Slaap (0 = dicht, 5–20 = kier)",
+          "window_rain_position": "Raamopening bij regen (0 = dicht, max. 10%)"
         }
       },
       "covers_menu": {

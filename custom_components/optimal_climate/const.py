@@ -58,7 +58,15 @@ DEFAULT_MIN_POSITION_WINDOW = 0
 
 # Window temperature gate defaults (°C)
 DEFAULT_WINDOW_TEMP_MIN = 14
-DEFAULT_WINDOW_TEMP_MAX = 26
+DEFAULT_WINDOW_TEMP_MAX = 26  # legacy: niet meer gebruikt als absolute bovengrens
+
+# Configureerbare raam-posities voor speciale modi
+CONF_WINDOW_AWAY_POSITION = "window_away_position"
+CONF_WINDOW_SLEEP_POSITION = "window_sleep_position"
+CONF_WINDOW_RAIN_POSITION = "window_rain_position"
+DEFAULT_WINDOW_AWAY_POSITION = 0   # % open bij afwezig (0 = dicht)
+DEFAULT_WINDOW_SLEEP_POSITION = 0  # % open bij slaap
+DEFAULT_WINDOW_RAIN_POSITION = 0   # % open bij regen (normaal altijd 0)
 
 # Platforms enabled by this integration
 PLATFORMS = ["sensor", "select"]

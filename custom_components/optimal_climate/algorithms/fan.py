@@ -69,6 +69,7 @@ def calculate(
     summer_cooling_delta: float = 2.0,
     humidity_outdoor_margin: int = 10,
     min_speed: int = 20,
+    ac_actively_cooling: bool = False,
 ) -> FanAdvice:
     """Return advised fan speed.
 
@@ -76,7 +77,7 @@ def calculate(
     1. CO2 critical  — always max
     2. CO2 elevated  — high speed
     3. Summer cooling — outdoor significantly cooler than indoor
-       (blocked if outdoor humidity is much higher than indoor)
+       (blocked if AC active, or if outdoor humidity is much higher than indoor)
     4. Humidity high  — medium speed
     5. CO2 moderate  — light boost
     6. Normal        — minimum speed
@@ -92,8 +93,10 @@ def calculate(
         return FanAdvice(speed_pct=75, reason=FanReason.CO2_ELEVATED, season=season)
 
     # 3. Summer cooling — buiten koeler dan binnen
+    #    Geblokkeerd als airco actief: fan trekt dan warme buitenlucht naar binnen
     if (
         season == Season.SUMMER
+        and not ac_actively_cooling
         and temp_indoor is not None
         and temp_outdoor is not None
         and temp_indoor - temp_outdoor >= summer_cooling_delta
