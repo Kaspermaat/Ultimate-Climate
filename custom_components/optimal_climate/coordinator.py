@@ -593,14 +593,23 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             target = self._calculate_window_position(states) if self._mode == MODE_AUTO else 0
             result_reason = "ventilatie"
         elif states.heavily_overcast:
-            # Zware bewolking → maar lux-sensor wint als die toch hoge lichtsterkte meet
-            lux_override = (
-                illuminance is not None and illuminance >= illuminance_threshold
+            # Zware bewolking → normaal geen zonwering nodig.
+            # Maar als de lux-sensor aangeeft dat de zon toch doorkomt én binnen
+            # de ideale temp nadert, zet wel zonwering in als warmtewering.
+            lux_high = illuminance is not None and illuminance >= illuminance_threshold
+            indoor = states.temp_indoor
+            ideal = states.ideal_temp
+            temp_warm_enough = (
+                indoor is not None
+                and ideal is not None
+                and indoor >= ideal - 1.0   # binnen ≤ 1°C onder doel: zon mag niet verder opwarmen
             )
+            lux_override = lux_high and temp_warm_enough
             if lux_override:
                 _LOGGER.debug(
-                    "Cover %s: bewolkt maar lux %.0f lx ≥ drempel %.0f lx → normale algo",
-                    entity_id, illuminance, illuminance_threshold,
+                    "Cover %s: bewolkt maar lux %.0f lx ≥ drempel en binnen %.1f°C ≥ (doel %.1f°C - 1) "
+                    "→ zonwering actief als warmtewering",
+                    entity_id, illuminance, indoor, ideal,
                 )
                 pos = cover_algo.calculate(
                     sun_azimuth=states.sun_azimuth or 0.0,
@@ -614,6 +623,15 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
                 )
                 target = pos.position
                 result_reason = pos.reason
+            elif lux_high:
+                # Lux hoog maar binnen nog koel genoeg → zon binnenlaten, geen zonwering
+                _LOGGER.debug(
+                    "Cover %s: bewolkt + lux hoog maar binnen %.1f°C ruim onder doel %.1f°C "
+                    "→ zon binnenlaten",
+                    entity_id, indoor if indoor is not None else 0.0, ideal if ideal is not None else 0.0,
+                )
+                target = 100
+                result_reason = "bewolkt"
             else:
                 target = 100
                 result_reason = "bewolkt"
