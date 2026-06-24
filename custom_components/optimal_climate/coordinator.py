@@ -777,18 +777,19 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
         target = states.ideal_temp if states.ideal_temp is not None else indoor
 
         if indoor > target + 0.5:
-            # Binnen te warm — koeling gewenst → open als buiten koeler dan binnen
+            # Binnen te warm: open als buiten koeler dan binnen (koeling via ventilatie)
             allowed = outdoor < indoor
             _LOGGER.debug(
                 "Raam [te warm]: binnen %.1f > doel %.1f; buiten %.1f → %s",
                 indoor, target, outdoor, "open" if allowed else "dicht",
             )
         else:
-            # Binnen op/onder setpoint — open alleen als buitenlucht niet verder afkoelt
-            allowed = outdoor >= target
+            # Binnen comfortabel of koel: open voor verse lucht, maar alleen als buiten
+            # niet warmer is dan ideaal + 2°C — anders brengt ventilatie onnodige warmte binnen
+            allowed = target <= outdoor <= indoor + 2.0
             _LOGGER.debug(
-                "Raam [stabiel/koud]: binnen %.1f ≤ doel %.1f; buiten %.1f → %s",
-                indoor, target, outdoor, "open" if allowed else "dicht",
+                "Raam [stabiel/koud]: binnen %.1f ≤ doel %.1f; buiten %.1f (max %.1f) → %s",
+                indoor, target, outdoor, indoor + 2.0, "open" if allowed else "dicht",
             )
 
         if not allowed and co2_critical:
