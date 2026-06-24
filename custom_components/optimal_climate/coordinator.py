@@ -131,6 +131,7 @@ class ClimateSnapshot:
     covers: list[CoverResult]
     mode: str
     co2_history: list[float] = field(default_factory=list)
+    temp_history: list[float] = field(default_factory=list)
 
     @property
     def co2_trend(self) -> str:
@@ -154,6 +155,7 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
         )
         self._entry = config_entry
         self._co2_history: list[float] = []
+        self._temp_history: list[float] = []   # binnentemp per poll-cyclus (max 10)
         self._last_fan_speed: int = -1
         self._last_cover_positions: dict[str, int] = {}
         self._mode: str = MODE_AUTO
@@ -327,6 +329,74 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
         if len(self._co2_history) > 10:
             self._co2_history.pop(0)
 
+    def _update_temp_history(self, temp: float | None) -> None:
+        if temp is None:
+            return
+        self._temp_history.append(temp)
+        if len(self._temp_history) > 10:
+            self._temp_history.pop(0)
+
+    def _temp_trend_toward_setpoint(self, setpoint: float, want_cooling: bool) -> bool:
+        """Return True als de binnentemp de laatste cycli richting setpoint beweegt."""
+        if len(self._temp_history) < 3:
+            return True  # te weinig data → aannemen dat het werkt
+        recent = self._temp_history[-3:]
+        delta = recent[-1] - recent[0]   # positief = stijgend
+        if want_cooling:
+            return delta < -0.1           # temp moet dalen
+        return delta > 0.1               # temp moet stijgen
+
+    def _calculate_window_position(self, states: SensorStates) -> int:
+        """Bereken proportionele raam-opening op basis van temp-afwijking van setpoint.
+
+        Koeling gewenst (binnen > setpoint):
+          - Schaalt van 20% (bij 0.5°C overschot) tot 100% (bij 4°C+ overschot)
+          - +15% als de temp na 3 cycli (~90s) nog niet daalt (feedback-boost)
+
+        Opwarming via buitenlucht (binnen < setpoint en buiten > indoor):
+          - Vaste 20% — zachte toevoer
+          - Geen boost want verwarmen via raam is al een noodgeval
+
+        Neutrale ventilatie (geen noemenswaardige afwijking):
+          - 100% open voor maximale luchtkwaliteit
+        """
+        indoor = states.temp_indoor
+        outdoor = states.temp_outdoor
+        target = states.temp_setpoint if states.temp_setpoint is not None else indoor
+
+        if indoor is None or target is None:
+            return 100
+
+        excess = indoor - target   # positief = te warm, negatief = te koud
+
+        if excess > 0.5:
+            # Koeling via ventilatie: proportioneel openen
+            # 0.5°C → 20%, 4°C+ → 100%  (lineair over 3.5°C bereik)
+            base = min(100, max(20, int(20 + (excess - 0.5) / 3.5 * 80)))
+            improving = self._temp_trend_toward_setpoint(target, want_cooling=True)
+            if not improving:
+                base = min(100, base + 15)
+                _LOGGER.debug(
+                    "Raam-boost: temp %.1f°C daalt niet richting setpoint %.1f°C → +15%%",
+                    indoor, target,
+                )
+            _LOGGER.debug(
+                "Raam proportioneel: excess=%.1f°C → positie=%d%% (boost=%s)",
+                excess, base, not improving,
+            )
+            return base
+
+        if excess < -0.5 and outdoor is not None and outdoor > indoor:
+            # Binnen te koud maar buitenlucht is warmer → voorzichtig openen
+            _LOGGER.debug(
+                "Raam 20%% voor opwarming: binnen %.1f°C < setpoint %.1f°C, buiten %.1f°C warmer",
+                indoor, target, outdoor,
+            )
+            return 20
+
+        # Binnen op setpoint: volledig open voor luchtverversing
+        return 100
+
     # ------------------------------------------------------------------
     # Fan actuator
     # ------------------------------------------------------------------
@@ -490,8 +560,8 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             target = 100
             result_reason = "zonwering_uit"
         elif cover_type == COVER_TYPE_WINDOW:
-            # Ramen volgen ventilatie-behoefte, niet de zonhoek
-            target = 100 if self._mode == MODE_AUTO else 0
+            # Ramen: proportioneel op basis van temp-afwijking van setpoint
+            target = self._calculate_window_position(states) if self._mode == MODE_AUTO else 0
             result_reason = "ventilatie"
         elif states.heavily_overcast:
             # Zware bewolking → maar lux-sensor wint als die toch hoge lichtsterkte meet
@@ -736,6 +806,7 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             raise UpdateFailed(f"Fout bij ophalen sensordata: {exc}") from exc
 
         self._update_co2_history(states.co2)
+        self._update_temp_history(states.temp_indoor)
         season = detect_season(states.temp_outdoor)
 
         comfort = comfort_algo.calculate(
@@ -780,4 +851,5 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             covers=cover_results,
             mode=self.mode,
             co2_history=list(self._co2_history),
+            temp_history=list(self._temp_history),
         )
