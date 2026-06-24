@@ -31,6 +31,7 @@ from .const import (
     CC_TEMP_SENSOR,
     CC_TYPE,
     CLIMATE_TYPE_COOLING,
+    CLOUD_COVERAGE_NO_SUN,
     CO2_GOOD,
     CO2_MODERATE,
     CO2_POOR,
@@ -60,6 +61,10 @@ from .const import (
     MODE_AUTO,
     MODE_AWAY,
     MODE_SLEEP,
+    WEATHER_ENTITY_CANDIDATES,
+    WEATHER_RAIN_CONDITIONS,
+    WEATHER_WIND_CONDITIONS,
+    WIND_SPEED_MAX_WINDOW,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -92,6 +97,14 @@ class SensorStates:
     sun_elevation: float | None = None
     ac_actively_cooling: bool = False       # any cooling entity has hvac_action=cooling
     natural_cooling_possible: bool = False  # buiten koeler dan binnen met voldoende marge
+    # Weather (auto-detected via Buienradar / weather.home)
+    weather_entity: str | None = None
+    weather_condition: str | None = None   # e.g. "rainy", "sunny", "cloudy"
+    wind_speed: float | None = None        # km/h
+    cloud_coverage: int | None = None      # 0-100 %
+    rain_active: bool = False              # regen of storm nu actief
+    wind_too_strong: bool = False          # wind boven drempel voor ramen
+    heavily_overcast: bool = False         # bewolking > drempel → geen zonwering nodig
 
 
 @dataclass
@@ -188,6 +201,55 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             return None
         return sum(values) / len(values)
 
+    def _get_weather_entity(self) -> str | None:
+        """Auto-detect weather entity: Buienradar first, then common fallbacks."""
+        for candidate in WEATHER_ENTITY_CANDIDATES:
+            if self.hass.states.get(candidate) is not None:
+                return candidate
+        return None
+
+    def _collect_weather(self) -> dict:
+        """Read weather state from auto-detected entity. Returns empty dict if unavailable."""
+        weather_eid = self._get_weather_entity()
+        if not weather_eid:
+            return {}
+        ws = self.hass.states.get(weather_eid)
+        if not ws or ws.state in ("unavailable", "unknown"):
+            return {}
+
+        condition = ws.state
+        wind_speed_val = _safe_float(ws.attributes.get("wind_speed"))
+        cc_raw = ws.attributes.get("cloud_coverage")
+        cloud_coverage_val = int(cc_raw) if cc_raw is not None else None
+
+        rain_active = condition in WEATHER_RAIN_CONDITIONS
+        wind_too_strong = (
+            condition in WEATHER_WIND_CONDITIONS
+            or (wind_speed_val is not None and wind_speed_val >= WIND_SPEED_MAX_WINDOW)
+        )
+        heavily_overcast = (
+            cloud_coverage_val is not None and cloud_coverage_val >= CLOUD_COVERAGE_NO_SUN
+        )
+
+        _LOGGER.debug(
+            "Weer via %s: conditie=%s wind=%.0f km/h bewolking=%s%% "
+            "regen=%s wind_te_hard=%s zwaar_bewolkt=%s",
+            weather_eid, condition,
+            wind_speed_val or 0,
+            cloud_coverage_val if cloud_coverage_val is not None else "?",
+            rain_active, wind_too_strong, heavily_overcast,
+        )
+
+        return {
+            "weather_entity": weather_eid,
+            "weather_condition": condition,
+            "wind_speed": wind_speed_val,
+            "cloud_coverage": cloud_coverage_val,
+            "rain_active": rain_active,
+            "wind_too_strong": wind_too_strong,
+            "heavily_overcast": heavily_overcast,
+        }
+
     def _collect_states(self) -> SensorStates:
         # Gather data from all configured climate entities
         climate_temps: list[float] = []
@@ -234,6 +296,8 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             sun_azimuth = _safe_float(sun_state.attributes.get("azimuth"))
             sun_elevation = _safe_float(sun_state.attributes.get("elevation"))
 
+        weather = self._collect_weather()
+
         return SensorStates(
             co2=self._float_state(self._config.get(CONF_CO2_SENSOR)),
             humidity_indoor=self._float_state(self._config.get(CONF_HUMIDITY_INDOOR)),
@@ -246,6 +310,7 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             sun_elevation=sun_elevation,
             ac_actively_cooling=ac_actively_cooling,
             natural_cooling_possible=natural_cooling,
+            **weather,
         )
 
     def _update_co2_history(self, co2: float | None) -> None:
@@ -421,6 +486,10 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             # Windows follow ventilation, not sun angle
             target = 100 if self._mode == MODE_AUTO else 0
             result_reason = "ventilatie"
+        elif states.heavily_overcast:
+            # Zware bewolking → zon schijnt niet door, zonwering niet nodig
+            target = 100
+            result_reason = "bewolkt"
         else:
             pos = cover_algo.calculate(
                 sun_azimuth=states.sun_azimuth or 0.0,
@@ -435,9 +504,20 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             target = pos.position
             result_reason = pos.reason
 
-        # For windows: AC- en temperatuurlogica
+        # For windows: regen/wind sluiten altijd, daarna temp/airco-logica
         if cover_type == COVER_TYPE_WINDOW and target > 0:
-            if not self._window_temp_allowed(states):
+            if states.rain_active:
+                target = 0
+                result_reason = "regen"
+                _LOGGER.debug("Raam %s dicht: regen (%s)", entity_id, states.weather_condition)
+            elif states.wind_too_strong:
+                target = 0
+                result_reason = "harde_wind"
+                _LOGGER.debug(
+                    "Raam %s dicht: harde wind (%.0f km/h)",
+                    entity_id, states.wind_speed or 0,
+                )
+            elif not self._window_temp_allowed(states):
                 target = 0
                 result_reason = "temperatuur_buiten_bereik"
             elif states.ac_actively_cooling and not states.natural_cooling_possible:

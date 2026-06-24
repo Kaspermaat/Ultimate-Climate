@@ -80,6 +80,19 @@ CO2_GOOD = 800
 CO2_MODERATE = 1000
 CO2_POOR = 1200
 
+# Weather — auto-detected, Buienradar preferred (geen API-key nodig)
+WEATHER_ENTITY_CANDIDATES = [
+    "weather.buienradar",
+    "weather.home",
+    "weather.forecast_home",
+]
+WEATHER_RAIN_CONDITIONS = frozenset({
+    "rainy", "pouring", "lightning-rainy", "hail", "snowy-rainy",
+})
+WEATHER_WIND_CONDITIONS = frozenset({"windy", "windy-variant"})
+WIND_SPEED_MAX_WINDOW = 40      # km/h — boven deze waarde gaan ramen dicht
+CLOUD_COVERAGE_NO_SUN = 85      # % bewolking — boven deze waarde geen zonwering nodig
+
 # Humidity: max outdoor-indoor delta before skipping ventilation (%)
 HUMIDITY_OUTDOOR_MARGIN = 10
 
