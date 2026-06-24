@@ -73,7 +73,7 @@ DEFAULT_WINDOW_SLEEP_POSITION = 0  # % open bij slaap
 DEFAULT_WINDOW_RAIN_POSITION = 0   # % open bij regen (normaal altijd 0)
 
 # Platforms enabled by this integration
-PLATFORMS = ["sensor", "select"]
+PLATFORMS = ["climate", "sensor", "select"]
 
 # Modes
 MODE_AUTO = "auto"

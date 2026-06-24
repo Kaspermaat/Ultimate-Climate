@@ -162,6 +162,19 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
         self._last_fan_speed: int = -1
         self._last_cover_positions: dict[str, int] = {}
         self._mode: str = MODE_AUTO
+        self._ideal_temp: float = float(
+            config_entry.options.get(CONF_IDEAL_TEMP)
+            or config_entry.data.get(CONF_IDEAL_TEMP)
+            or DEFAULT_IDEAL_TEMP
+        )
+
+    @property
+    def ideal_temp(self) -> float:
+        return self._ideal_temp
+
+    @ideal_temp.setter
+    def ideal_temp(self, value: float) -> None:
+        self._ideal_temp = float(value)
 
     @property
     def mode(self) -> str:
@@ -169,7 +182,7 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
 
     @mode.setter
     def mode(self, value: str) -> None:
-        valid = {MODE_AUTO, MODE_AWAY, MODE_SLEEP, "handmatig"}
+        valid = {MODE_AUTO, MODE_AWAY, MODE_SLEEP, "handmatig", "uit"}
         if value not in valid:
             _LOGGER.warning("Ongeldige modus '%s' genegeerd", value)
             return
@@ -310,9 +323,8 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
 
         weather = self._collect_weather()
 
-        # Centrale doeltemperatuur: config-waarde wint van thermostaat-setpoint
-        ideal_temp_cfg = _safe_float(self._config.get(CONF_IDEAL_TEMP))
-        ideal_temp = ideal_temp_cfg if ideal_temp_cfg is not None else temp_setpoint
+        # Centrale doeltemperatuur: thermostaat-entiteit wint van thermostaat-setpoint
+        ideal_temp = self._ideal_temp if self._ideal_temp is not None else temp_setpoint
 
         return SensorStates(
             co2=self._float_state(self._config.get(CONF_CO2_SENSOR)),
@@ -797,8 +809,8 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
                     results.append(await self._async_apply_one_cover(cfg, states, season))
             return results
 
-        if self.mode != MODE_AUTO:
-            # Manual — no writes, return empty
+        if self.mode in ("handmatig", "uit"):
+            # Handmatig of uit — geen automatische aansturing
             return []
 
         await self._async_apply_fan(fan.speed_pct)
