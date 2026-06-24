@@ -624,41 +624,55 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
     # ------------------------------------------------------------------
 
     def _window_temp_allowed(self, states: SensorStates) -> bool:
+        """Bepaal of de buitentemperatuur het openen van ramen rechtvaardigt.
+
+        Relatief aan de doeltemperatuur (setpoint van thermostaat/airco):
+        - Binnen te warm (> setpoint+0.5): open als buiten koeler dan binnen (koeling via ventilatie)
+        - Binnen op/onder setpoint: open alleen als buiten >= setpoint (anders verder afkoelen)
+        CO2 kritiek overschrijft altijd.
+        """
         outdoor = states.temp_outdoor
         indoor = states.temp_indoor
 
         if outdoor is None:
-            return True  # onbekend → open
+            return True
 
         co2_critical = states.co2 is not None and states.co2 > CO2_POOR
         temp_min = float(self._config.get(CONF_WINDOW_TEMP_MIN, DEFAULT_WINDOW_TEMP_MIN))
 
-        # Absolute ondergrens: te koud voor comfort
+        # Absolute ondergrens: te koud om te ventileren
         if outdoor < temp_min:
             if co2_critical:
-                _LOGGER.debug(
-                    "Raam toch open ondanks buitentemp %.1f°C — CO₂ kritiek", outdoor
-                )
+                _LOGGER.debug("Raam toch open ondanks %.1f°C buiten — CO2 kritiek", outdoor)
                 return True
             return False
 
-        # Relatieve bovengrens: als buitenlucht warmer is dan binnenlucht voegt
-        # ventilatie alleen maar warmte toe — raam dicht.
-        # Uitzondering: CO₂ kritiek (luchtkwaliteit gaat voor comfort).
-        if indoor is not None and outdoor >= indoor:
-            if co2_critical:
-                _LOGGER.debug(
-                    "Raam toch open: buiten %.1f°C >= binnen %.1f°C, maar CO₂ kritiek",
-                    outdoor, indoor,
-                )
-                return True
+        if indoor is None:
+            return True
+
+        # Setpoint als referentie; fall-back op binnentemperatuur
+        target = states.temp_setpoint if states.temp_setpoint is not None else indoor
+
+        if indoor > target + 0.5:
+            # Binnen te warm — koeling gewenst → open als buiten koeler dan binnen
+            allowed = outdoor < indoor
             _LOGGER.debug(
-                "Raam dicht: buiten %.1f°C >= binnen %.1f°C — ventilatie voegt warmte toe",
-                outdoor, indoor,
+                "Raam [te warm]: binnen %.1f > doel %.1f; buiten %.1f → %s",
+                indoor, target, outdoor, "open" if allowed else "dicht",
             )
-            return False
+        else:
+            # Binnen op/onder setpoint — open alleen als buitenlucht niet verder afkoelt
+            allowed = outdoor >= target
+            _LOGGER.debug(
+                "Raam [stabiel/koud]: binnen %.1f ≤ doel %.1f; buiten %.1f → %s",
+                indoor, target, outdoor, "open" if allowed else "dicht",
+            )
 
-        return True
+        if not allowed and co2_critical:
+            _LOGGER.debug("Raam toch open — CO2 kritiek (%.0f ppm)", states.co2)
+            return True
+
+        return allowed
 
     # ------------------------------------------------------------------
     # Mode-aware action dispatch
