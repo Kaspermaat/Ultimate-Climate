@@ -28,6 +28,7 @@
         "title": "Sensoren koppelen",
         "description": "Stap {step} — koppel sensoren. Alle velden zijn optioneel.",
         "data": {
+          "ideal_temp": "Ideale comforttemperatuur (°C)",
           "co2_sensor": "CO₂ sensor (ppm)",
           "humidity_indoor": "Luchtvochtigheid binnen (%)",
           "humidity_outdoor": "Luchtvochtigheid buiten (%)",
@@ -88,6 +89,7 @@
       "edit_thresholds": {
         "title": "Drempelwaarden",
         "data": {
+          "ideal_temp": "Ideale comforttemperatuur (°C)",
           "window_temp_min": "Min. buitentemp. voor ramen openen (°C)",
           "window_temp_max": "Max. buitentemp. voor ramen openen (°C)"
         }

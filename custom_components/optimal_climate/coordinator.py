@@ -44,6 +44,7 @@ from .const import (
     CONF_HUMIDITY_OUTDOOR,
     CONF_TEMP_OUTDOOR,
     CONF_TEMP_SENSORS,
+    CONF_IDEAL_TEMP,
     CONF_WINDOW_TEMP_MAX,
     CONF_WINDOW_TEMP_MIN,
     CONF_WINDOW_AWAY_POSITION,
@@ -59,6 +60,7 @@ from .const import (
     DEFAULT_WINDOW_AWAY_POSITION,
     DEFAULT_WINDOW_RAIN_POSITION,
     DEFAULT_WINDOW_SLEEP_POSITION,
+    DEFAULT_IDEAL_TEMP,
     DEFAULT_WINDOW_TEMP_MAX,
     DEFAULT_WINDOW_TEMP_MIN,
     DOMAIN,
@@ -104,6 +106,7 @@ class SensorStates:
     sun_elevation: float | None = None
     ac_actively_cooling: bool = False       # any cooling entity has hvac_action=cooling
     natural_cooling_possible: bool = False  # buiten koeler dan binnen met voldoende marge
+    ideal_temp: float | None = None         # centrale doeltemperatuur (config > thermostaat-setpoint)
     # Weather (auto-detected via Buienradar / weather.home)
     weather_entity: str | None = None
     weather_condition: str | None = None   # e.g. "rainy", "sunny", "cloudy"
@@ -307,6 +310,10 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
 
         weather = self._collect_weather()
 
+        # Centrale doeltemperatuur: config-waarde wint van thermostaat-setpoint
+        ideal_temp_cfg = _safe_float(self._config.get(CONF_IDEAL_TEMP))
+        ideal_temp = ideal_temp_cfg if ideal_temp_cfg is not None else temp_setpoint
+
         return SensorStates(
             co2=self._float_state(self._config.get(CONF_CO2_SENSOR)),
             humidity_indoor=self._float_state(self._config.get(CONF_HUMIDITY_INDOOR)),
@@ -319,6 +326,7 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
             sun_elevation=sun_elevation,
             ac_actively_cooling=ac_actively_cooling,
             natural_cooling_possible=natural_cooling,
+            ideal_temp=ideal_temp,
             **weather,
         )
 
@@ -363,6 +371,9 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
         indoor = states.temp_indoor
         outdoor = states.temp_outdoor
         target = states.temp_setpoint if states.temp_setpoint is not None else indoor
+
+        # Ideale temp als referentie (config > thermostaat-setpoint > binnentemp)
+        target = states.ideal_temp if states.ideal_temp is not None else indoor
 
         if indoor is None or target is None:
             return 100
@@ -720,8 +731,8 @@ class OptimalClimateCoordinator(DataUpdateCoordinator[ClimateSnapshot]):
         if indoor is None:
             return True
 
-        # Setpoint als referentie; fall-back op binnentemperatuur
-        target = states.temp_setpoint if states.temp_setpoint is not None else indoor
+        # Ideale temp als referentie (config > thermostaat-setpoint > binnentemp)
+        target = states.ideal_temp if states.ideal_temp is not None else indoor
 
         if indoor > target + 0.5:
             # Binnen te warm — koeling gewenst → open als buiten koeler dan binnen

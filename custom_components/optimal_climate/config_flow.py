@@ -32,6 +32,7 @@ from .const import (
     CONF_HUMIDITY_OUTDOOR,
     CONF_TEMP_OUTDOOR,
     CONF_TEMP_SENSORS,
+    CONF_IDEAL_TEMP,
     CONF_WINDOW_AWAY_POSITION,
     CONF_WINDOW_RAIN_POSITION,
     CONF_WINDOW_SLEEP_POSITION,
@@ -46,6 +47,7 @@ from .const import (
     DEFAULT_MIN_POSITION_CURTAIN,
     DEFAULT_MIN_POSITION_SHUTTER,
     DEFAULT_MIN_POSITION_WINDOW,
+    DEFAULT_IDEAL_TEMP,
     DEFAULT_WINDOW_AWAY_POSITION,
     DEFAULT_WINDOW_RAIN_POSITION,
     DEFAULT_WINDOW_SLEEP_POSITION,
@@ -122,6 +124,13 @@ class OptimalClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="sensors",
             data_schema=vol.Schema({
+                vol.Optional(
+                    CONF_IDEAL_TEMP, default=DEFAULT_IDEAL_TEMP
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=16, max=28, step=0.5, unit_of_measurement="°C", mode="slider"
+                    )
+                ),
                 vol.Optional(CONF_CO2_SENSOR): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor", device_class="carbon_dioxide")
                 ),
@@ -248,6 +257,14 @@ class OptimalClimateOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="edit_thresholds",
             data_schema=vol.Schema({
+                vol.Optional(
+                    CONF_IDEAL_TEMP,
+                    default=self._options.get(CONF_IDEAL_TEMP, DEFAULT_IDEAL_TEMP),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=16, max=28, step=0.5, unit_of_measurement="°C", mode="slider"
+                    )
+                ),
                 vol.Optional(
                     CONF_WINDOW_TEMP_MIN,
                     default=self._options.get(CONF_WINDOW_TEMP_MIN, DEFAULT_WINDOW_TEMP_MIN),

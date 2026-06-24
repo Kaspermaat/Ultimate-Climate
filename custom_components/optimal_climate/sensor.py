@@ -377,6 +377,7 @@ class ActivityLogSensor(_BaseClimateSensor):
 
         # Sensoren
         sensoren = {
+            "ideale_temp_c": s.ideal_temp,
             "temp_binnen_c": s.temp_indoor,
             "temp_buiten_c": s.temp_outdoor,
             "co2_ppm": s.co2,

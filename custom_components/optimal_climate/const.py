@@ -56,6 +56,10 @@ DEFAULT_MIN_POSITION_SHUTTER = 0        # shutters may fully close
 DEFAULT_MIN_POSITION_CURTAIN = 10       # curtains stay ≥ 10% open
 DEFAULT_MIN_POSITION_WINDOW = 0
 
+# Ideale comforttemperatuur — centraal doel voor alle beslissingen
+CONF_IDEAL_TEMP = "ideal_temp"
+DEFAULT_IDEAL_TEMP = 21.0  # °C
+
 # Window temperature gate defaults (°C)
 DEFAULT_WINDOW_TEMP_MIN = 14
 DEFAULT_WINDOW_TEMP_MAX = 26  # legacy: niet meer gebruikt als absolute bovengrens
